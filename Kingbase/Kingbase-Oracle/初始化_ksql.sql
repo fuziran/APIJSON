@@ -1,4 +1,4 @@
--- Kingbase Oracle initialization entry script.
+-- Kingbase Oracle initialization entry script for the 18 verified single SQL files.
 -- Run with ksql, for example:
 --   ksql -d apijson -f Kingbase/Kingbase-Oracle/初始化_ksql.sql
 
@@ -22,4 +22,5 @@
 \ir single/Response.sql
 \ir single/TestRecord.sql
 \ir single/Verify.sql
-\ir single/constraints.sql
+
+COMMIT;
