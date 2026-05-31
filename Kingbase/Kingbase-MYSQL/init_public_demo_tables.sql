@@ -1,8 +1,5 @@
--- Kingbase SQL Server compatibility mode demo tables for APIJSON.
+-- Kingbase MySQL compatibility mode demo tables for APIJSON.
 -- Run after init_public_apijson.sql.
-
-CREATE SCHEMA IF NOT EXISTS "public";
-SET search_path TO "public";
 
 \set ON_ERROR_STOP on
 

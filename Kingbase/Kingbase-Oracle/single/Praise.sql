@@ -1,0 +1,53 @@
+-- ----------------------------
+-- Table structure for Praise
+-- ----------------------------
+DROP TABLE IF EXISTS "Praise" CASCADE;
+CREATE TABLE "Praise" (
+  "id" NUMBER(20) NOT NULL,
+  "momentId" NUMBER(20) NOT NULL,
+  "userId" NUMBER(20) NOT NULL,
+  "date" DATE
+)
+;
+COMMENT ON COLUMN "Praise"."id" IS '动态id';
+COMMENT ON COLUMN "Praise"."momentId" IS '唯一标识';
+COMMENT ON COLUMN "Praise"."userId" IS '用户id';
+COMMENT ON COLUMN "Praise"."date" IS '点赞时间';
+COMMENT ON TABLE "Praise" IS '如果对Moment写安全要求高，可以将Moment内praiserUserIdList分离到Praise表中，作为userIdList。
+权限注解也改下：
+@MethodAccess(
+		PUT = {OWNER, ADMIN}
+		)
+class Moment {
+       …
+}
+
+@MethodAccess(
+		PUT = {LOGIN, CONTACT, CIRCLE, OWNER, ADMIN}
+		)
+ class Praise {
+       …
+ }
+';
+
+-- ----------------------------
+-- Records of Praise
+-- ----------------------------
+INSERT INTO "Praise" VALUES ('1', '12', '82001', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('2', '15', '82002', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('3', '32', '82003', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('4', '58', '82004', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('5', '170', '82005', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('6', '235', '82006', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('7', '301', '82007', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('8', '371', '82008', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('9', '470', '82009', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('10', '511', '82010', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('11', '543', '82011', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('12', '551', '82012', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('13', '594', '82013', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('14', '595', '82014', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('15', '704', '82015', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('16', '1491200468898', '82016', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('17', '1491277116776', '82017', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));
+INSERT INTO "Praise" VALUES ('18', '1493835799335', '82018', TO_DATE('2017-11-19 21:02:30', 'SYYYY-MM-DD HH24:MI:SS'));

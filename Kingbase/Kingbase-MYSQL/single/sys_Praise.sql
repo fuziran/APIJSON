@@ -1,0 +1,31 @@
+-- Kingbase MySQL compatibility initialization script for APIJSON Praise.
+-- Source: Kingbase-mysql/single/Demo/sys_Praise.sql
+
+SET standard_conforming_strings = on;
+
+-- Kingbase MySQL 兼容模式 SQL
+-- 转换自: MySQL/single/Demo/sys_Praise.sql
+-- 转换时间: 2026-05-10 20:57:49
+-- 使用方法: 在 Kingbase 数据库的 MySQL 兼容模式下执行
+
+--
+-- ------------------------------------------------------
+
+--
+-- Table structure for table `Praise`
+--
+
+DROP TABLE IF EXISTS `Praise`;
+CREATE TABLE `Praise` (
+  `id` bigint NOT NULL COMMENT '动态id',
+  `momentId` bigint NOT NULL COMMENT '唯一标识',
+  `userId` bigint NOT NULL COMMENT '用户id',
+  `date` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '点赞时间',
+  PRIMARY KEY (`id`)
+);
+
+--
+-- Dumping data for table `Praise`
+--
+
+INSERT INTO `Praise` VALUES (1,12,82001,'2017-11-19 13:02:30'),(2,15,82002,'2017-11-19 13:02:30'),(3,32,82003,'2017-11-19 13:02:30'),(4,58,82004,'2017-11-19 13:02:30'),(5,170,82005,'2017-11-19 13:02:30'),(6,235,82006,'2017-11-19 13:02:30'),(7,301,82007,'2017-11-19 13:02:30'),(8,371,82008,'2017-11-19 13:02:30'),(9,470,82009,'2017-11-19 13:02:30'),(10,511,82010,'2017-11-19 13:02:30'),(11,543,82011,'2017-11-19 13:02:30'),(12,551,82012,'2017-11-19 13:02:30'),(13,594,82013,'2017-11-19 13:02:30'),(14,595,82014,'2017-11-19 13:02:30'),(15,704,82015,'2017-11-19 13:02:30'),(16,1491200468898,82016,'2017-11-19 13:02:30'),(17,1491277116776,82017,'2017-11-19 13:02:30'),(18,1493835799335,82018,'2017-11-19 13:02:30');
