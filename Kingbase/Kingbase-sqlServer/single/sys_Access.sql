@@ -60,3 +60,39 @@ INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "
 INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "gets", "heads", "post", "put", "delete", "date", "detail") VALUES (37, 0, NULL, 'View', NULL, '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '2022-12-05 17:45:34', NULL);
 INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "gets", "heads", "post", "put", "delete", "date", "detail") VALUES (39, 0, NULL, 'Chain', NULL, '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '2022-12-05 17:45:34', NULL);
 INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "gets", "heads", "post", "put", "delete", "date", "detail") VALUES (40, 0, NULL, 'Praise', NULL, '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '2018-11-28 16:29:19', NULL);
+
+-- Normalize system table permissions. Some converted rows above use legacy
+-- string fragments like '""UNKNOWN", ...""', which APIJSON cannot parse as
+-- JSON arrays when initializing ACCESS_MAP.
+UPDATE "Access"
+SET
+  "get" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "head" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "gets" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "heads" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "post" = '[]',
+  "put" = '[]',
+  "delete" = '[]'
+WHERE "name" = 'Access';
+
+UPDATE "Access"
+SET
+  "get" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "head" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "gets" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "heads" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "post" = '[]',
+  "put" = '[]',
+  "delete" = '[]'
+WHERE "name" IN ('Function', 'Request');
+
+UPDATE "Access"
+SET
+  "get" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "head" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "gets" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "heads" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
+  "post" = '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]',
+  "put" = '["OWNER", "ADMIN"]',
+  "delete" = '["OWNER", "ADMIN"]'
+WHERE "name" = 'Script';
