@@ -61,38 +61,83 @@ INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "
 INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "gets", "heads", "post", "put", "delete", "date", "detail") VALUES (39, 0, NULL, 'Chain', NULL, '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '2022-12-05 17:45:34', NULL);
 INSERT INTO "Access" ("id", "debug", "schema", "name", "alias", "get", "head", "gets", "heads", "post", "put", "delete", "date", "detail") VALUES (40, 0, NULL, 'Praise', NULL, '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '["OWNER", "ADMIN"]', '2018-11-28 16:29:19', NULL);
 
--- Normalize system table permissions. Some converted rows above use legacy
--- string fragments like '""UNKNOWN", ...""', which APIJSON cannot parse as
--- JSON arrays when initializing ACCESS_MAP.
+-- Normalize converted permission strings to JSON arrays for ACCESS_MAP.
 UPDATE "Access"
 SET
-  "get" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "head" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "gets" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "heads" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "post" = '[]',
-  "put" = '[]',
-  "delete" = '[]'
-WHERE "name" = 'Access';
-
-UPDATE "Access"
-SET
-  "get" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "head" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "gets" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "heads" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "post" = '[]',
-  "put" = '[]',
-  "delete" = '[]'
-WHERE "name" IN ('Function', 'Request');
-
-UPDATE "Access"
-SET
-  "get" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "head" = '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "gets" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "heads" = '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]',
-  "post" = '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]',
-  "put" = '["OWNER", "ADMIN"]',
-  "delete" = '["OWNER", "ADMIN"]'
-WHERE "name" = 'Script';
+  "get" = CASE
+    WHEN "get" = '""' THEN '[]'
+    WHEN "get" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "get" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "get" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "get" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "get" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "get" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "get" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "get"
+  END,
+  "head" = CASE
+    WHEN "head" = '""' THEN '[]'
+    WHEN "head" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "head" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "head" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "head" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "head" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "head" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "head" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "head"
+  END,
+  "gets" = CASE
+    WHEN "gets" = '""' THEN '[]'
+    WHEN "gets" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "gets" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "gets" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "gets" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "gets" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "gets" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "gets" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "gets"
+  END,
+  "heads" = CASE
+    WHEN "heads" = '""' THEN '[]'
+    WHEN "heads" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "heads" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "heads" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "heads" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "heads" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "heads" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "heads" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "heads"
+  END,
+  "post" = CASE
+    WHEN "post" = '""' THEN '[]'
+    WHEN "post" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "post" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "post" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "post" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "post" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "post" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "post" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "post"
+  END,
+  "put" = CASE
+    WHEN "put" = '""' THEN '[]'
+    WHEN "put" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "put" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "put" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "put" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "put" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "put" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "put" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "put"
+  END,
+  "delete" = CASE
+    WHEN "delete" = '""' THEN '[]'
+    WHEN "delete" = '" "ADMIN""' THEN '["ADMIN"]'
+    WHEN "delete" = '""ADMIN""' THEN '["ADMIN"]'
+    WHEN "delete" = '""LOGIN", "ADMIN""' THEN '["LOGIN", "ADMIN"]'
+    WHEN "delete" = '""OWNER", "ADMIN""' THEN '["OWNER", "ADMIN"]'
+    WHEN "delete" = '""UNKNOWN","LOGIN","OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "OWNER", "ADMIN"]'
+    WHEN "delete" = '""LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    WHEN "delete" = '""UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN""' THEN '["UNKNOWN", "LOGIN", "CONTACT", "CIRCLE", "OWNER", "ADMIN"]'
+    ELSE "delete"
+  END;
