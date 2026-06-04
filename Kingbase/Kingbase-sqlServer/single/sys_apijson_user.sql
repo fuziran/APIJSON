@@ -17,7 +17,7 @@ CREATE TABLE "apijson_user" (
   "name" varchar(20) NOT NULL ,
   "tag" varchar(45) DEFAULT NULL ,
   "head" varchar(300) DEFAULT 'https://raw.githubusercontent.com/TommyLemon/StaticResources/master/APIJSON_Logo.png' ,
-  "contactIdList" TEXT DEFAULT NULL ,
+  "contactIdList" jsonb DEFAULT NULL ,
   "pictureList" TEXT DEFAULT NULL ,
   "date" DATETIME NULL DEFAULT CURRENT_TIMESTAMP ,
   PRIMARY KEY ("id")
