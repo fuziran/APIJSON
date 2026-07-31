@@ -1557,7 +1557,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// return DATABASE_POSTGRESQL.equals(getDatabase()) ? t.toLowerCase() : t;
 		String ot = getTable();
 		String nt = TABLE_KEY_MAP.get(ot);
-		if (isKingBaseSQLServer() && (StringUtil.isEmpty(nt) || Objects.equals(ot, nt))) {
+		if ((isKingBaseSQLServer() || isKingBaseOracle())
+				&& (StringUtil.isEmpty(nt) || Objects.equals(ot, nt))) {
 			if (Table.class.getSimpleName().equals(ot)) {
 				nt = Table.TABLE_NAME;
 			}
@@ -6046,7 +6047,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					// col_description rather than information_schema.columns. APIAuto uses this
 					// length predicate only as a metadata pre-filter; applying it to columns
 					// would reference a field that does not exist.
-					if (config.isKingBaseSQLServer() && Column.TAG.equals(config.getTable())
+					if ((config.isKingBaseSQLServer() || config.isKingBaseOracle())
+							&& Column.TAG.equals(config.getTable())
 							&& key.regionMatches(true, 0, "column_comment[", 0, "column_comment[".length())) {
 						continue;
 					}

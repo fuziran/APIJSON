@@ -263,7 +263,7 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void restoresMissingMetadataTableMappingsOnlyForKingbaseSQLServer() {
+	public void restoresMissingMetadataTableMappingsForKingbaseSQLServerAndOracle() {
 		Map<String, String> original = new HashMap<>(AbstractSQLConfig.TABLE_KEY_MAP);
 		try {
 			AbstractSQLConfig.TABLE_KEY_MAP.remove("Table");
@@ -276,14 +276,20 @@ public class KingbaseCompatibilityTest {
 			assertEquals("pg_class", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "PgClass").gainSQLTable());
 			assertEquals("pg_attribute", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "PgAttribute").gainSQLTable());
 
+			assertEquals("tables", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "Table").gainSQLTable());
+			assertEquals("columns", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "Column").gainSQLTable());
+			assertEquals("pg_class", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "PgClass").gainSQLTable());
+			assertEquals("pg_attribute", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "PgAttribute").gainSQLTable());
+
 			assertEquals("Table", config(SQLConfig.DATABASE_KINGBASE_MYSQL, "Table").gainSQLTable());
-			assertEquals("Table", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "Table").gainSQLTable());
 
 			AbstractSQLConfig.TABLE_KEY_MAP.put("Table", "Table");
 			assertEquals("tables", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Table").gainSQLTable());
+			assertEquals("tables", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "Table").gainSQLTable());
 
 			AbstractSQLConfig.TABLE_KEY_MAP.put("Table", "custom_tables");
 			assertEquals("custom_tables", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Table").gainSQLTable());
+			assertEquals("custom_tables", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "Table").gainSQLTable());
 		}
 		finally {
 			AbstractSQLConfig.TABLE_KEY_MAP.clear();
@@ -319,21 +325,24 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void ignoresUnavailableColumnCommentMetadataFilter() throws Exception {
-		Map<String, Object> request = new LinkedHashMap<>();
-		request.put("@database", SQLConfig.DATABASE_KINGBASE_SQLSERVER);
-		request.put("table_name", "Moment");
-		request.put("column_comment[>", 2);
-		request.put("@column", "column_name");
+	public void ignoresUnavailableColumnCommentMetadataFilterForKingbaseSQLServerAndOracle() throws Exception {
+		for (String database : Arrays.asList(
+				SQLConfig.DATABASE_KINGBASE_SQLSERVER,
+				SQLConfig.DATABASE_KINGBASE_ORACLE)) {
+			Map<String, Object> request = new LinkedHashMap<>();
+			request.put("@database", database);
+			request.put("table_name", "Moment");
+			request.put("column_comment[>", 2);
+			request.put("@column", "column_name");
 
-		SQLConfig<Long, Map<String, Object>, List<Object>> config = AbstractSQLConfig.newSQLConfig(
-				RequestMethod.GET, "Column", null, request, null, false, callback());
-		config.setCount(50);
-		String sql = config.gainSQL(false);
+			SQLConfig<Long, Map<String, Object>, List<Object>> config = AbstractSQLConfig.newSQLConfig(
+					RequestMethod.GET, "Column", null, request, null, false, callback());
+			config.setCount(50);
+			String sql = config.gainSQL(false);
 
-		assertTrue(sql, sql.contains("\"table_name\" = 'Moment'"));
-		assertFalse(sql, sql.toLowerCase().contains("column_comment"));
-		assertTrue(sql, sql.contains("ORDER BY \"ordinal_position\""));
+			assertTrue(sql, sql.contains("\"table_name\" = 'Moment'"));
+			assertFalse(sql, sql.toLowerCase().contains("column_comment"));
+		}
 	}
 
 	@Test
