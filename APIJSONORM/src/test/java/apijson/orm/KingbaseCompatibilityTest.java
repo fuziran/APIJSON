@@ -14,6 +14,7 @@ import java.time.Year;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,8 +80,12 @@ public class KingbaseCompatibilityTest {
 	}
 
 	private AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config(String database) {
+		return config(database, "User");
+	}
+
+	private AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config(String database, String table) {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config =
-				new AbstractSQLConfig<Long, Map<String, Object>, List<Object>>(RequestMethod.GET, "User") {
+				new AbstractSQLConfig<Long, Map<String, Object>, List<Object>>(RequestMethod.GET, table) {
 					@Override
 					public String gainDBVersion() {
 						return "9.0.0";
@@ -103,6 +108,17 @@ public class KingbaseCompatibilityTest {
 				};
 		config.setDatabase(database);
 		return config;
+	}
+
+	private AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>> callback() {
+		return new AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>>() {
+			@Override
+			public SQLConfig<Long, Map<String, Object>, List<Object>> getSQLConfig(
+					RequestMethod method, String database, String datasource, String namespace,
+					String catalog, String schema, String table) {
+				return KingbaseCompatibilityTest.this.config(database, table);
+			}
+		};
 	}
 
 	@Test
@@ -244,6 +260,80 @@ public class KingbaseCompatibilityTest {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> explain = config(SQLConfig.DATABASE_KINGBASE_SQLSERVER);
 		explain.setExplain(true);
 		assertTrue(explain.gainSQL(true).startsWith("EXPLAIN SELECT"));
+	}
+
+	@Test
+	public void restoresMissingMetadataTableMappingsOnlyForKingbaseSQLServer() {
+		Map<String, String> original = new HashMap<>(AbstractSQLConfig.TABLE_KEY_MAP);
+		try {
+			AbstractSQLConfig.TABLE_KEY_MAP.remove("Table");
+			AbstractSQLConfig.TABLE_KEY_MAP.remove("Column");
+			AbstractSQLConfig.TABLE_KEY_MAP.remove("PgClass");
+			AbstractSQLConfig.TABLE_KEY_MAP.remove("PgAttribute");
+
+			assertEquals("tables", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Table").gainSQLTable());
+			assertEquals("columns", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Column").gainSQLTable());
+			assertEquals("pg_class", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "PgClass").gainSQLTable());
+			assertEquals("pg_attribute", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "PgAttribute").gainSQLTable());
+
+			assertEquals("Table", config(SQLConfig.DATABASE_KINGBASE_MYSQL, "Table").gainSQLTable());
+			assertEquals("Table", config(SQLConfig.DATABASE_KINGBASE_ORACLE, "Table").gainSQLTable());
+
+			AbstractSQLConfig.TABLE_KEY_MAP.put("Table", "Table");
+			assertEquals("tables", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Table").gainSQLTable());
+
+			AbstractSQLConfig.TABLE_KEY_MAP.put("Table", "custom_tables");
+			assertEquals("custom_tables", config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Table").gainSQLTable());
+		}
+		finally {
+			AbstractSQLConfig.TABLE_KEY_MAP.clear();
+			AbstractSQLConfig.TABLE_KEY_MAP.putAll(original);
+		}
+	}
+
+	@Test
+	public void usesMetadataIdsForKingbaseSqlServerPagination() throws Exception {
+		AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>> callback = callback();
+		String[][] metadataIds = {
+				{"Table", "table_name"},
+				{"Column", "ordinal_position"},
+				{"PgClass", "oid"},
+				{"PgAttribute", "attnum"}
+		};
+
+		for (String[] metadataId : metadataIds) {
+			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config =
+					config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, metadataId[0]);
+			config.setCount(10);
+			String sql = config.gainSQL(false);
+
+			assertEquals(metadataId[1], config.getIdKey());
+			assertEquals(metadataId[1], callback.getIdKey(
+					SQLConfig.DATABASE_KINGBASE_SQLSERVER, null, null, null, null, metadataId[0]));
+			assertTrue(sql, sql.contains("ORDER BY \"" + metadataId[1] + "\""));
+			assertFalse(sql, sql.contains("ORDER BY \"id\""));
+		}
+
+		assertEquals("id", callback.getIdKey(
+				SQLConfig.DATABASE_KINGBASE_SQLSERVER, null, null, null, null, "User"));
+	}
+
+	@Test
+	public void ignoresUnavailableColumnCommentMetadataFilter() throws Exception {
+		Map<String, Object> request = new LinkedHashMap<>();
+		request.put("@database", SQLConfig.DATABASE_KINGBASE_SQLSERVER);
+		request.put("table_name", "Moment");
+		request.put("column_comment[>", 2);
+		request.put("@column", "column_name");
+
+		SQLConfig<Long, Map<String, Object>, List<Object>> config = AbstractSQLConfig.newSQLConfig(
+				RequestMethod.GET, "Column", null, request, null, false, callback());
+		config.setCount(50);
+		String sql = config.gainSQL(false);
+
+		assertTrue(sql, sql.contains("\"table_name\" = 'Moment'"));
+		assertFalse(sql, sql.toLowerCase().contains("column_comment"));
+		assertTrue(sql, sql.contains("ORDER BY \"ordinal_position\""));
 	}
 
 	@Test

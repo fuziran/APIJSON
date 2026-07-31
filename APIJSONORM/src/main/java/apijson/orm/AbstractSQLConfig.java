@@ -884,6 +884,22 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	@NotNull
 	@Override
 	public String getIdKey() {
+		return getMetadataIdKey(getTable());
+	}
+
+	private static String getMetadataIdKey(String table) {
+		if (Table.TAG.equals(table)) {
+			return "table_name";
+		}
+		if (Column.TAG.equals(table)) {
+			return "ordinal_position";
+		}
+		if (PgClass.TAG.equals(table)) {
+			return "oid";
+		}
+		if (PgAttribute.TAG.equals(table)) {
+			return "attnum";
+		}
 		return KEY_ID;
 	}
 	@NotNull
@@ -1541,6 +1557,20 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// return DATABASE_POSTGRESQL.equals(getDatabase()) ? t.toLowerCase() : t;
 		String ot = getTable();
 		String nt = TABLE_KEY_MAP.get(ot);
+		if (isKingBaseSQLServer() && (StringUtil.isEmpty(nt) || Objects.equals(ot, nt))) {
+			if (Table.class.getSimpleName().equals(ot)) {
+				nt = Table.TABLE_NAME;
+			}
+			else if (Column.class.getSimpleName().equals(ot)) {
+				nt = Column.TABLE_NAME;
+			}
+			else if (PgClass.class.getSimpleName().equals(ot)) {
+				nt = PgClass.TABLE_NAME;
+			}
+			else if (PgAttribute.class.getSimpleName().equals(ot)) {
+				nt = PgAttribute.TABLE_NAME;
+			}
+		}
 		return StringUtil.isEmpty(nt) ? ot : nt;
 	}
 
@@ -6012,6 +6042,15 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 				Map<String, Object> tableContent = new LinkedHashMap<String, Object>();
 				for (String key : set) {
+					// Kingbase exposes PostgreSQL-style column comments through pg_attribute/
+					// col_description rather than information_schema.columns. APIAuto uses this
+					// length predicate only as a metadata pre-filter; applying it to columns
+					// would reference a field that does not exist.
+					if (config.isKingBaseSQLServer() && Column.TAG.equals(config.getTable())
+							&& key.regionMatches(true, 0, "column_comment[", 0, "column_comment[".length())) {
+						continue;
+					}
+
 					Object value = request.get(key);
 					if (ignoreEmptyOrBlankStr && value instanceof String && StringUtil.isEmpty(value, ignoreBlankStr)) {
 						continue;
@@ -6682,7 +6721,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 		@Override
 		public String getIdKey(String database, String datasource, String namespace, String catalog, String schema, String table) {
-			return KEY_ID;
+			return getMetadataIdKey(table);
 		}
 
 		@Override
