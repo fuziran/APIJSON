@@ -15,8 +15,7 @@ This source code is licensed under the Apache License Version 2.0 <br/>
   <a href="http://apijson.cn/api">测试用例</a>
   <a href="https://deepwiki.com/Tencent/APIJSON">AI 问答</a>
   <a href="https://context7.com/tencent/apijson">Skills</a>
-  <a href="https://yro.ai/agents/apijson">MCP</a>
-  <a href="https://yro.ai/agents/apijson">A2A</a>
+  <a href="https://context7.com/tencent/apijson">MCP</a>
   <a href="https://github.com/TommyLemon/A2API">A2API</a>
 </p>
 <p align="center" >
@@ -210,7 +209,7 @@ https://github.com/Tencent/APIJSON/wiki
 * **高质可靠代码** (代码严谨规范，蚂蚁集团源伞 Pinpoint 代码扫描分析报告平均每行代码 Bug 率低至 0.15%)
 * **兼容各种项目** (协议不限 HTTP，与其它库无冲突，对各类 Web 框架集成友好且提供 SpringBoot, JFinal 的示例)
 * **工程轻量小巧** (无第三方依赖，Jar 仅 263KB，Java 文件仅 68 个共 14864 行代码，例如 APIJSONORM 8.1.0)
-* **多年持续迭代** (自 2016 年起已连续维护 8 年多，70+ 贡献者、100+ 发版、3000+ 提交，不断更新迭代中...)
+* **多年持续迭代** (自 2016 年起已连续维护 9 年多，70+ 贡献者、100+ 发版、3000+ 提交，不断更新迭代中...)
 
 **按照一般互联网中小型项目情况可得出以下对比表格：**
 
@@ -378,7 +377,7 @@ https://github.com/Tencent/APIJSON/issues/187
  * [上海钰亿环保科技有限公司](#)
 
 ### 贡献者们
-主项目 APIJSON 的贡献者们(6 个腾讯工程师、1 个微软工程师、1 个阿里云工程师、1 个字节跳动工程师、1 个网易工程师、1 个 Zoom 工程师、1 个圆通工程师、1 个知乎基础研发架构师、1 个智联招聘工程师、gorm-plus 作者、1 个美国加州大学学生、3 个 SUSTech 学生等)：<br />
+主项目 APIJSON 的贡献者们(7 个腾讯工程师、1 个微软工程师、1 个阿里云工程师、1 个字节跳动工程师、1 个网易工程师、1 个 Zoom 工程师、1 个圆通工程师、1 个知乎基础研发架构师、1 个智联招聘工程师、gorm-plus 作者、1 个美国加州大学学生、3 个 SUSTech 学生等)：<br />
 https://github.com/Tencent/APIJSON/blob/master/CONTRIBUTING.md <br />
 <br />
 <img width="815" height="181" alt="Screenshot 2026-04-18 at 05 28 48" src="https://github.com/user-attachments/assets/7a5a76f4-b1a2-4ac0-b7ee-901611adeab6" />
@@ -675,6 +674,8 @@ Issue/问卷 一般解答顺序：贡献者 > 帮助他人的用户 > 提供任�
 [apijson-spring-boot](https://gitee.com/yunjiao-source/apijson-spring-boot) Springboot3 for APIJSON，用 YAML 简化代码配置
 
 [APIJSONServer](https://github.com/cyber2jie/APIJSONServer) 基于APIJSON实现的数据服务端
+
+[BankTransferNetwork](https://gitee.com/guxurui2024/BankTransferNetwork) 基于 APIJSON + Spark + Kafka 构建的金融交易网络风险图谱分析系统
 
 感谢热心的作者们的贡献，点亮 ⭐ Star 收藏/支持下他们吧~
 

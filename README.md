@@ -16,8 +16,7 @@ This source code is licensed under the Apache License Version 2.0 <br/>
   <a href="http://apijson.cn/api">&nbsp;Test&nbsp;</a>
   <a href="https://deepwiki.com/Tencent/APIJSON">Ask AI</a>
   <a href="https://context7.com/tencent/apijson">Skills</a>
-  <a href="https://yro.ai/agents/apijson">MCP</a>
-  <a href="https://yro.ai/agents/apijson">A2A</a>
+  <a href="https://context7.com/tencent/apijson">MCP</a>
   <a href="https://github.com/TommyLemon/A2API">A2API</a>
 </p>
 
@@ -303,7 +302,7 @@ https://github.com/Tencent/APIJSON/issues/187
 [More APIJSON Users](https://github.com/Tencent/APIJSON/issues/73)
 
 ### Contributers of APIJSON:
-Contributers for the APIJSON core project(6 Tencent engineers, 1 Microsoft engineer, 1 Zhihu architect, 1 Bytedance(TikTok) engineer, 1 NetEase engineer, 1 Zoom engineer, 1 YTO Express engineer, 1 Zhilian engineer, 1 UC student、3 SUSTech students, etc.): <br />
+Contributers for the APIJSON core project(7 Tencent engineers, 1 Microsoft engineer, 1 Zhihu architect, 1 Bytedance(TikTok) engineer, 1 NetEase engineer, 1 Zoom engineer, 1 YTO Express engineer, 1 Zhilian engineer, 1 UC student、3 SUSTech students, etc.): <br />
 https://github.com/Tencent/APIJSON/blob/master/CONTRIBUTING.md <br />
 <br />
 <img width="815" height="181" alt="Screenshot 2026-04-18 at 05 28 48" src="https://github.com/user-attachments/assets/7a5a76f4-b1a2-4ac0-b7ee-901611adeab6" />
@@ -456,6 +455,8 @@ a lot of employees from big famous companies(Tencent, Huawei, Microsoft, Zoom, e
 [apijson-spring-boot](https://gitee.com/yunjiao-source/apijson-spring-boot) Springboot3 for APIJSON, using YAML to simplify configuration
 
 [APIJSONServer](https://github.com/cyber2jie/APIJSONServer) Data server based on APIJSON
+
+[BankTransferNetwork](https://gitee.com/guxurui2024/BankTransferNetwork) Financial trading risk analyzer, based on APIJSON + Spark + Kafka
 
 Thank you to all the enthusiastic authors for the contributions~ <br />
 ### Please give them a ⭐ Star(on the top right) to support their hard works!

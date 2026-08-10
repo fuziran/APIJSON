@@ -86,6 +86,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 * 表名映射，隐藏真实表名，对安全要求很高的表可以这么做
 	 */
 	public static Map<String, String> TABLE_KEY_MAP;
+	public static Map<String, Object> UPSERT_TABLE_MAP;
 	/**
 	 * 字段名映射，隐藏真实字段名，对安全要求很高的表可以这么做，另外可以配置 name_tag:(name,tag) 来实现多字段 IN，length_tag:length(tag) 来实现 SQL 函数复杂条件
 	 */
@@ -134,6 +135,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		TABLE_KEY_MAP.put(AllColumn.class.getSimpleName(), AllColumn.TABLE_NAME);
 		TABLE_KEY_MAP.put(AllTableComment.class.getSimpleName(), AllTableComment.TABLE_NAME);
 		TABLE_KEY_MAP.put(AllColumnComment.class.getSimpleName(), AllColumnComment.TABLE_NAME);
+
+		UPSERT_TABLE_MAP = new HashMap<>();
 
 		ALLOW_PARTIAL_UPDATE_FAIL_TABLE_MAP = new HashMap<>();
 
@@ -1203,7 +1206,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	public static boolean isKingBase(String db) {
 		return KingbaseSQLDialect.from(db).isKingbase();
 	}
-	
+
 	@Override
 	public boolean isKingBaseMySQL() {
 		return isKingBaseMySQL(gainSQLDatabase());
@@ -1211,7 +1214,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	public static boolean isKingBaseMySQL(String db) {
 		return KingbaseSQLDialect.from(db).isMySQL();
 	}
-	
+
 	@Override
 	public boolean isKingBaseOracle() {
 		return isKingBaseOracle(gainSQLDatabase());
@@ -1219,7 +1222,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	public static boolean isKingBaseOracle(String db) {
 		return KingbaseSQLDialect.from(db).isOracle();
 	}
-	
+
 	@Override
 	public boolean isKingBaseSQLServer() {
 		return isKingBaseSQLServer(gainSQLDatabase());
@@ -2926,7 +2929,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	public List<List<Object>> getValues() {
 		return values;
 	}
-	public String getValuesString() {
+	public String gainValuesString() {
 		String s = "";
 		if (values != null && values.size() > 0) {
 			Object[] items = new Object[values.size()];
@@ -5035,13 +5038,13 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// TODO procedure 改为 List<Procedure>  procedureList; behind : true; function: callFunction(); String key; ...
 		// for (...) { Call procedure1();\n SQL \n; Call procedure2(); ... }
 		// 貌似不需要，因为 ObjectParser<T, M, L> 里就已经处理的顺序等，只是这里要解决下 Schema 问题。
-
+		String table = config.getTable();
 		String procedure = config.getProcedure();
 		if (StringUtil.isNotEmpty(procedure, true)) {
 			int ind = procedure.indexOf(".");
 			boolean hasPrefix = ind >= 0 && ind < procedure.indexOf("(");
 			String sch = hasPrefix ? AbstractFunctionParser.extractSchema(
-					procedure.substring(0, ind), config.getTable()
+					procedure.substring(0, ind), table
 			) : config.gainSQLSchema();
 
 			String q = config.getQuote();
@@ -5061,61 +5064,201 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			method = GET;
 		}
 
-		String cSql = null;
+		String cSql;
 		switch (method) {
 			case POST:
-				return "INSERT INTO " + tablePath + config.gainColumnString() + " VALUES" + config.getValuesString();
+				return config.gainUpsertSQL();
 			case PUT:
-				if(config.isClickHouse()){
-					return  "ALTER TABLE " +  tablePath + " UPDATE" + config.gainSetString() + config.gainWhereString(true);
-				}
-				cSql =  "UPDATE " + tablePath + config.gainSetString() + config.gainWhereString(true)
-						+ (config.isMySQL() || KingbaseSQLDialect.from(config.gainSQLDatabase()).supportsDmlLimit() ? config.gainLimitString() : "");
-				cSql = buildWithAsExprSql(config, cSql);
-				return cSql;
+				return config.gainUpdateSQL();
 			case DELETE:
-				if(config.isClickHouse()){
-					return  "ALTER TABLE " +  tablePath + " DELETE" + config.gainWhereString(true);
-				}
-				cSql =  "DELETE FROM " + tablePath + config.gainWhereString(true)
-						+ (config.isMySQL() || KingbaseSQLDialect.from(config.gainSQLDatabase()).supportsDmlLimit() ? config.gainLimitString() : "");  // PostgreSQL 不允许 LIMIT
-				cSql = buildWithAsExprSql(config, cSql);
-				return cSql;
+				return config.gainDeleteSQL();
 			default:
-				KingbaseSQLDialect kingbaseDialect = KingbaseSQLDialect.from(config.gainSQLDatabase());
-				String kingbaseExplain = kingbaseDialect.getExplainPrefix();
-				String explain = config.isExplain() ? (kingbaseExplain != null ? kingbaseExplain
-						: (config.isSQLServer() ? "SET STATISTICS PROFILE ON  "
-						: (config.isOracle() || config.isDameng() ? "EXPLAIN PLAN FOR " : "EXPLAIN "))) : "";
-				if (config.isTest() && RequestMethod.isGetMethod(config.getMethod(), true)) {  // FIXME 为啥是 code 而不是 count ？
-					String q = config.getQuote();  // 生成 SELECT  (  (24 >=0 AND 24 <3)  )  AS `code` LIMIT 1 OFFSET 0
-					return explain + "SELECT " + config.gainWhereString(false)
-							+ config.gainAs() + q + JSONResponse.KEY_COUNT + q + config.gainLimitString();
+				return config.gainSelectSQL();
+		}
+	}
+
+	public static String gainInsertSQL(String tablePath, String columns, String values) {
+		return "INSERT INTO " + tablePath + columns + " VALUES" + values;
+	}
+
+	public String gainUpsertSQL() throws Exception {
+		String table = getTable();
+		Object obj = UPSERT_TABLE_MAP.get(table);
+		String tablePath = gainTablePath();
+		if (obj == null) {
+			return gainInsertSQL(tablePath, gainColumnString(), gainValuesString());
+		}
+
+		String database = gainSQLDatabase();
+		String q = getQuote();
+
+		String key = "";
+		String setStr = "";
+		if (obj instanceof String) { // MySQL/PostgreSQL 简单写 version = version + 1
+			setStr = (String) obj;
+		} else if (obj instanceof Map<?, ?>) {
+			// PostgreSQL 写 { "": "excluded.version = Method.version" }
+			// 或 自定义 CONFLICT key 写 { "package,method": "excluded.version = Method.version + 1" }
+			// 或多数据库写 { "Oracle": { "method,tag": "excluded.version = Request.version + 1" }, "DB2": {...} } 等
+
+			Map<String, Object> setObj = (Map<String, Object>) obj;
+			Object dbSetObj = setObj.get(database);
+			if (dbSetObj instanceof String) {
+				setStr = (String) dbSetObj;
+			} else {
+				boolean isDBSet = dbSetObj instanceof Map<?, ?>;
+				if (isDBSet) {
+					setObj = (Map<String, Object>) dbSetObj;
+				} else if (dbSetObj != null) {
+					throw new IllegalArgumentException("UPSERT_TABLE_MAP 中 " + table + ": {" + database + ": value} 中 value 不合法，必须是 String 或 Map<String, Object> 类型！");
 				}
 
-				config.setPreparedValueList(new ArrayList<Object>());
-				String column = config.gainColumnString();
-				if (config.isOracle() || config.isDameng() || config.isKingBaseOracle()) {
-					//When config's database is oracle,Using subquery since Oracle12 below does not support OFFSET FETCH paging syntax.
-					//针对oracle分组后条数的统计
-					if (StringUtil.isNotEmpty(config.getGroup(),true) && RequestMethod.isHeadMethod(config.getMethod(), true)){
-						return explain + "SELECT count(*) FROM (SELECT " + (config.getCache() == JSONMap.CACHE_RAM
-								? "SQL_NO_CACHE " : "") + column + " FROM " + gainConditionString(tablePath, config) + ") " + config.gainLimitString();
+				Set<Entry<String, Object>> set = setObj.entrySet();
+				boolean first = true;
+				for (Entry<String, Object> entry : set) {
+					String k = entry == null ? null : entry.getKey();
+					Object v = k == null ? null : entry.getValue();
+					if (v == null || (isDBSet == false && DATABASE_LIST.contains(k))) {
+						continue;
 					}
 
-					String sql = "SELECT " + (config.getCache() == JSONMap.CACHE_RAM
-							? "SQL_NO_CACHE " : "") + column + " FROM " + gainConditionString(tablePath, config);
-					return explain + config.gainOraclePageSQL(sql);
+					if (StringUtil.isEmpty(k)) {
+						k = q + getIdKey() + q;
+					} else if (!(k.contains(",") || (k.startsWith("`") && k.endsWith("`")) || (k.startsWith("\"") && k.endsWith("\"")))) {
+						k = q + k + q;
+					}
+
+					key += (first ? "" : ", ") + k;
+					setStr += (first ? "" : ", ") + v; // 自定义表达式不好自动处理，后端配置正确即可 gainValue(k, k, v);
+					first = false;
+				}
+			}
+		} else {
+			throw new IllegalArgumentException("UPSERT_TABLE_MAP 中 " + table + ": value 中 value 不合法，必须是 String 或 Map<String, Object> 类型！");
+		}
+
+		if (StringUtil.isEmpty(setStr)) {
+			return gainInsertSQL(tablePath, gainColumnString(), gainValuesString());
+		}
+
+		String columns = gainColumnString();
+
+		if (isPostgreSQL(database) || isSQLite(database) || isCockroachDB(database) || isTimescaleDB(database)) {
+			if (StringUtil.isEmpty(key)) {
+				key = q + getIdKey() + q;
+			}
+			return gainInsertSQL(tablePath, columns, gainValuesString()) + " ON CONFLICT(" + key + ") DO UPDATE SET " + setStr;
+		}
+
+		boolean isDB2 = isDb2(database);
+		boolean isOracle = isDB2 == false && isOracle(database);
+		boolean isDameng = isDB2 == false && isOracle == false && isDameng(database);
+		if (isDB2 || isOracle || isDameng || isSQLServer(database)) {
+			String alias = gainSQLAlias();
+			String idKey = getIdKey();
+
+			String vs;
+			String cvs = "";
+
+			vs = "";
+			List<String> cols = getColumn();
+			List<List<Object>> valss = cols == null || cols.isEmpty() ? null : getValues();
+			if (valss == null || valss.size() != 1) {
+				throw new IllegalArgumentException("POST " + table + " 不合法，UPSERT 模式下 VALUES 必须是 1 条记录！");
+			}
+
+			List<Object> vals = valss.get(0);
+			boolean first = true;
+			for (int i = 0; i < cols.size(); i++) {
+				String c = cols.get(i);
+				if (c == null) { // FIXME 带上 id 是否有问题？ || idKey.equals(c)) {
+					continue;
 				}
 
-				cSql = "SELECT " + (config.getCache() == JSONMap.CACHE_RAM ? "SQL_NO_CACHE " : "")
-						+ column + " FROM " + gainConditionString(tablePath, config) + config.gainLimitString();
-				cSql = buildWithAsExprSql(config, cSql);
-				if(config.isElasticsearch()) { // elasticSearch 不支持 explain
-					return cSql;
-				}
-				return explain + cSql;
+				Object v = vals.get(i);
+				String s = gainValue(c, c, v) + (isDB2 ? "" : " " + q + c + q);
+
+				vs += (first ? "" : ", ") + s;
+				cvs += (first ? "" : ", ") + "excluded." + q + c + q;
+				first = false;
+			}
+
+			if (StringUtil.isEmpty(vs)) {
+				throw new IllegalArgumentException("POST " + table + " 不合法，UPSERT 模式下 VALUES 必须是 1 条记录！");
+			}
+
+			vs = isDB2 ? "VALUES(" + vs + ")" : "SELECT " + vs + (isOracle || isDameng ? " FROM dual" : "");
+
+			idKey = q + idKey + q;
+			return "MERGE INTO " + tablePath + " " + alias + " USING (\n  " + vs + "\n) excluded"
+					+ (isDB2 ? columns : "") + " ON " + alias + "." + idKey + " = excluded." + idKey + " \nWHEN MATCHED THEN \n  UPDATE SET "
+					+ setStr + " \nWHEN NOT MATCHED THEN \n  INSERT" + columns + " VALUES(" + cvs + ")";
 		}
+
+		return gainInsertSQL(tablePath, columns, gainValuesString()) + " ON DUPLICATE KEY UPDATE " + setStr;
+	}
+
+	public String gainUpdateSQL() throws Exception {
+		String tablePath = gainTablePath();
+		if (isClickHouse()){
+			return  "ALTER TABLE " + tablePath + " UPDATE" + gainSetString() + gainWhereString(true);
+		}
+
+		String cSql = "UPDATE " + tablePath + gainSetString() + gainWhereString(true)
+				+ (isMySQL() || KingbaseSQLDialect.from(gainSQLDatabase()).supportsDmlLimit() ? gainLimitString() : "");
+		cSql = buildWithAsExprSql(this, cSql);
+		return cSql;
+	}
+
+	public String gainDeleteSQL() throws Exception {
+		String tablePath = gainTablePath();
+		if(isClickHouse()){
+			return  "ALTER TABLE " +  tablePath + " DELETE" + gainWhereString(true);
+		}
+
+		String cSql =  "DELETE FROM " + tablePath + gainWhereString(true)
+				+ (isMySQL() || KingbaseSQLDialect.from(gainSQLDatabase()).supportsDmlLimit() ? gainLimitString() : "");  // PostgreSQL 不允许 LIMIT
+		cSql = buildWithAsExprSql(this, cSql);
+		return cSql;
+	}
+
+	public String gainSelectSQL() throws Exception {
+		KingbaseSQLDialect kingbaseDialect = KingbaseSQLDialect.from(gainSQLDatabase());
+		String kingbaseExplain = kingbaseDialect.getExplainPrefix();
+		String explain = isExplain() ? (kingbaseExplain != null ? kingbaseExplain
+				: (isSQLServer() ? "SET STATISTICS PROFILE ON  "
+				: (isOracle() || isDameng() ? "EXPLAIN PLAN FOR " : "EXPLAIN "))) : "";
+		if (isTest() && RequestMethod.isGetMethod(getMethod(), true)) {  // FIXME 为啥是 code 而不是 count ？
+			String q = getQuote();  // 生成 SELECT  (  (24 >=0 AND 24 <3)  )  AS `code` LIMIT 1 OFFSET 0
+			return explain + "SELECT " + gainWhereString(false)
+					+ gainAs() + q + JSONResponse.KEY_COUNT + q + gainLimitString();
+		}
+
+		setPreparedValueList(new ArrayList<>());
+
+		String tablePath = gainTablePath();
+		String column = gainColumnString();
+		if (isOracle() || isDameng() || isKingBaseOracle()) {
+			//When config's database is oracle,Using subquery since Oracle12 below does not support OFFSET FETCH paging syntax.
+			//针对oracle分组后条数的统计
+			if (StringUtil.isNotEmpty(getGroup(),true) && RequestMethod.isHeadMethod(getMethod(), true)){
+				return explain + "SELECT count(*) FROM (SELECT " + (getCache() == JSONMap.CACHE_RAM
+						? "SQL_NO_CACHE " : "") + column + " FROM " + gainConditionString(tablePath, this) + ") " + gainLimitString();
+			}
+
+			String sql = "SELECT " + (getCache() == JSONMap.CACHE_RAM
+					? "SQL_NO_CACHE " : "") + column + " FROM " + gainConditionString(tablePath, this);
+			return explain + gainOraclePageSQL(sql);
+		}
+
+		String cSql = "SELECT " + (getCache() == JSONMap.CACHE_RAM ? "SQL_NO_CACHE " : "")
+				+ column + " FROM " + gainConditionString(tablePath, this) + gainLimitString();
+		cSql = buildWithAsExprSql(this, cSql);
+		if(isElasticsearch()) { // elasticSearch 不支持 explain
+			return cSql;
+		}
+
+		return explain + cSql;
 	}
 
 	private static <T, M extends Map<String, Object>, L extends List<Object>> String buildWithAsExprSql(@NotNull AbstractSQLConfig<T, M, L> config, String cSql) throws Exception {
