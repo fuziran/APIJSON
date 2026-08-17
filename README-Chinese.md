@@ -54,6 +54,11 @@ This source code is licensed under the Apache License Version 2.0 <br/>
   <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/PostgreSQL"><img src="https://img.shields.io/badge/TimescaleDB-17.1%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/IoTDB-1.3%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONBoot-MultiDataSource" ><img src="https://img.shields.io/badge/DataBend-1.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Doris" ><img src="https://img.shields.io/badge/Doris-2.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/StarRocks" ><img src="https://img.shields.io/badge/StarRocks-4.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL" ><img src="https://img.shields.io/badge/KingbaseES-V9%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/QuestDB" ><img src="https://img.shields.io/badge/QuestDB-8.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONBoot-MultiDataSource" ><img src="https://img.shields.io/badge/SQLite-3.46%2B-brightgreen.svg?style=flat"></a>
 </p>
 <p align="center" >
   <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server"><img src="https://img.shields.io/badge/Java-1.8%2B-brightgreen.svg?style=flat"></a>
@@ -63,7 +68,7 @@ This source code is licensed under the Apache License Version 2.0 <br/>
   <a href="https://github.com/kvnZero/hyperf-APIJSON"><img src="https://img.shields.io/badge/PHP-8.0%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/kevinaskin/apijson-node"><img src="https://img.shields.io/badge/Node.js-ES6%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/zhangchunlin/uliweb-apijson"><img src="https://img.shields.io/badge/Python-3%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://gitee.com/APIJSON/panda-base"><img src="https://img.shields.io/badge/Rust-1.90%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/apijson-rust"><img src="https://img.shields.io/badge/Rust-1.90%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONDemo-Script"><img src="https://img.shields.io/badge/Lua-5.2%2B-brightgreen.svg?style=flat"></a>
 </p>
 <p align="center" >
@@ -76,7 +81,7 @@ This source code is licensed under the Apache License Version 2.0 <br/>
 <p align="center" >
   <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Android"><img src="https://img.shields.io/badge/Android-4.0%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-iOS"><img src="https://img.shields.io/badge/iOS-7%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-JavaScript"><img src="https://img.shields.io/badge/JavaScript-ES6%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-JavaScript"><img src="https://img.shields.io/badge/Web-ES6%2B-brightgreen.svg?style=flat"></a>
 </p>
 
 <p align="center" >
@@ -209,7 +214,7 @@ https://github.com/Tencent/APIJSON/wiki
 * **高质可靠代码** (代码严谨规范，蚂蚁集团源伞 Pinpoint 代码扫描分析报告平均每行代码 Bug 率低至 0.15%)
 * **兼容各种项目** (协议不限 HTTP，与其它库无冲突，对各类 Web 框架集成友好且提供 SpringBoot, JFinal 的示例)
 * **工程轻量小巧** (无第三方依赖，Jar 仅 263KB，Java 文件仅 68 个共 14864 行代码，例如 APIJSONORM 8.1.0)
-* **多年持续迭代** (自 2016 年起已连续维护 9 年多，70+ 贡献者、100+ 发版、3000+ 提交，不断更新迭代中...)
+* **多年持续迭代** (自 2016 年起已连续维护 9 年多，80+ 贡献者、100+ 发版、3000+ 提交，不断更新迭代中...)
 
 **按照一般互联网中小型项目情况可得出以下对比表格：**
 
@@ -388,8 +393,9 @@ https://search.gitee.com/?skin=rec&type=repository&q=apijson&sort=stars_count <b
 <br />
 <img width="816" height="182" alt="Screenshot 2026-04-18 at 05 29 36" src="https://github.com/user-attachments/assets/5bd53109-88e6-40b5-b343-7e653992f80d" />
 
-还有为 APIJSON 扫描代码贡献 Issue 的 [蚂蚁集团源伞](https://www.sourcebrella.com) 和 [奇安信代码卫士](https://github.com/QiAnXinCodeSafe)
+还有 [腾讯安全](https://security.tencent.com)、[蚂蚁集团源伞](https://www.sourcebrella.com)、[奇安信代码卫士](https://github.com/QiAnXinCodeSafe) 提交安全报告(Issue)等
 <div style="float:left">
+  <a href="https://security.tencent.com" style="padding: 5px"><img height="100" alt="image" src="https://github.com/user-attachments/assets/e49859d6-3e98-452d-a2e0-876264c1f722" /></a>
   <a href="https://www.sourcebrella.com" style="padding: 5px"><img src="https://github.com/user-attachments/assets/2d580664-9df9-4275-8346-5ba2d04936b9" height="90" ></a>
   <a href="https://github.com/QiAnXinCodeSafe" style="margin-right: 20px"><img src="https://avatars.githubusercontent.com/u/39950310?s=460&u=8c4ad8c2174ba78c0604614a6e2feced07521ce6&v=4"  height="90" ></a>
 </div>
