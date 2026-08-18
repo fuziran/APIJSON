@@ -1710,26 +1710,8 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	}
 
 	protected void setKingbaseMySQLArgument(@NotNull PreparedStatement statement, int parameterIndex, Object value) throws SQLException {
-		int jdbcType = Types.OTHER;
-		String typeName = "";
-		try {
-			ParameterMetaData metadata = statement.getParameterMetaData();
-			if (metadata != null) {
-				jdbcType = metadata.getParameterType(parameterIndex);
-				typeName = normalizeJdbcTypeName(metadata.getParameterTypeName(parameterIndex));
-			}
-		}
-		catch (SQLException ignored) {
-			// The driver may not expose parameter metadata until execution.
-		}
-
 		if (value == null) {
-			if (jdbcType == Types.NULL || jdbcType == 0) {
-				statement.setObject(parameterIndex, null);
-			}
-			else {
-				statement.setNull(parameterIndex, jdbcType);
-			}
+			statement.setObject(parameterIndex, null);
 			return;
 		}
 		if (value instanceof byte[]) {
@@ -1742,15 +1724,10 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		}
 		if (value instanceof Map || value instanceof Collection || value.getClass().isArray()) {
 			String json = JSON.toJSONString(value);
-			if (isJSONTypeName(typeName) || jdbcType == Types.OTHER) {
-				statement.setObject(parameterIndex, json, Types.OTHER);
-			}
-			else {
-				statement.setString(parameterIndex, json);
-			}
+			statement.setObject(parameterIndex, json, Types.OTHER);
 			return;
 		}
-		if (value instanceof UUID && jdbcType == Types.OTHER) {
+		if (value instanceof UUID) {
 			statement.setObject(parameterIndex, value.toString(), Types.OTHER);
 			return;
 		}

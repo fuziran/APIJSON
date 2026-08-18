@@ -527,22 +527,18 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void bindsKingbaseMySQLValuesUsingParameterMetadata() throws Exception {
+	public void bindsKingbaseMySQLValuesWithoutParameterMetadata() throws Exception {
 		AbstractSQLExecutor<Long, Map<String, Object>, List<Object>> executor =
 				new AbstractSQLExecutor<Long, Map<String, Object>, List<Object>>() { };
 		SQLConfig<Long, Map<String, Object>, List<Object>> config = config(SQLConfig.DATABASE_KINGBASE_MYSQL);
 		AtomicReference<String> call = new AtomicReference<>();
 		AtomicReference<Object[]> arguments = new AtomicReference<>();
 
-		ParameterMetaData metadata = (ParameterMetaData) Proxy.newProxyInstance(getClass().getClassLoader(),
-				new Class<?>[] {ParameterMetaData.class}, (proxy, method, args) -> {
-					if ("getParameterType".equals(method.getName())) return Types.OTHER;
-					if ("getParameterTypeName".equals(method.getName())) return "jsonb";
-					return primitiveDefault(method.getReturnType());
-				});
 		PreparedStatement statement = (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(),
 				new Class<?>[] {PreparedStatement.class}, (proxy, method, args) -> {
-					if ("getParameterMetaData".equals(method.getName())) return metadata;
+					if ("getParameterMetaData".equals(method.getName())) {
+						throw new SQLException("Kingbase parameter metadata must not be queried while a transaction is active");
+					}
 					if (method.getName().startsWith("set")) {
 						call.set(method.getName());
 						arguments.set(args);
@@ -556,6 +552,14 @@ public class KingbaseCompatibilityTest {
 
 		executor.setArgument(config, statement, 0, new byte[] {1, 2});
 		assertEquals("setBytes", call.get());
+
+		executor.setArgument(config, statement, 1, 82001L);
+		assertEquals("setObject", call.get());
+		assertEquals(82001L, arguments.get()[1]);
+
+		executor.setArgument(config, statement, 2, null);
+		assertEquals("setObject", call.get());
+		assertEquals(null, arguments.get()[1]);
 	}
 
 	@Test
