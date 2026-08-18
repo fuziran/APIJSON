@@ -176,6 +176,87 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
+	public void mapsJsonLengthOnlyForKingbaseMySQL() throws Exception {
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> kingbaseMySQL =
+				config(SQLConfig.DATABASE_KINGBASE_MYSQL, "Moment");
+		kingbaseMySQL.setColumn(Arrays.asList(
+				"json_length(pictureList):pictureCount"));
+		String kingbaseSql = kingbaseMySQL.gainSQL(true);
+		assertTrue(kingbaseSql,
+				kingbaseSql.contains(
+						"json_array_length(`pictureList`) AS `pictureCount`"));
+		assertEquals("json_array_length(`pictureList`)>0",
+				kingbaseMySQL.gainHavingItem("`", "Moment", null, "",
+						"json_length(pictureList)>0", false));
+		assertEquals("json_array_length(`pictureList`)",
+				kingbaseMySQL.gainKey("pictureList{"));
+
+		for (String database : Arrays.asList(
+				SQLConfig.DATABASE_MYSQL,
+				SQLConfig.DATABASE_POSTGRESQL,
+				SQLConfig.DATABASE_ORACLE,
+				SQLConfig.DATABASE_SQLSERVER,
+				SQLConfig.DATABASE_KINGBASE_ORACLE,
+				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> unchanged =
+					config(database, "Moment");
+			unchanged.setColumn(Arrays.asList(
+					"json_length(pictureList):pictureCount"));
+			String sql = unchanged.gainSQL(true);
+			assertTrue(database + ": " + sql,
+					sql.contains("json_length("));
+			assertFalse(database + ": " + sql,
+					sql.contains("json_array_length("));
+			assertEquals(database,
+					"json_length(" + unchanged.gainSQLKey("pictureList") + ")",
+					unchanged.gainKey("pictureList{"));
+		}
+	}
+
+	@Test
+	public void movesScalarJsonLengthHavingOnlyForKingbaseMySQL() throws Exception {
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> kingbaseMySQL =
+				jsonLengthHavingConfig(SQLConfig.DATABASE_KINGBASE_MYSQL);
+		String kingbaseSql = kingbaseMySQL.gainSQL(true);
+		assertTrue(kingbaseSql, kingbaseSql.contains(
+				"WHERE  (  (`userId` = ?)  )  AND ((json_array_length(`pictureList`)>0))"));
+		assertFalse(kingbaseSql, kingbaseSql.contains(" HAVING "));
+
+		for (String database : Arrays.asList(
+				SQLConfig.DATABASE_MYSQL,
+				SQLConfig.DATABASE_POSTGRESQL,
+				SQLConfig.DATABASE_ORACLE,
+				SQLConfig.DATABASE_SQLSERVER,
+				SQLConfig.DATABASE_KINGBASE_ORACLE,
+				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+			String sql = jsonLengthHavingConfig(database).gainSQL(true);
+			assertTrue(database + ": " + sql, sql.contains(" HAVING "));
+		}
+
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> aggregate =
+				config(SQLConfig.DATABASE_KINGBASE_MYSQL, "Moment");
+		aggregate.setColumn(Arrays.asList("userId"));
+		Map<String, Object> aggregateHaving = new LinkedHashMap<>();
+		aggregateHaving.put("having0", "count(id)>0");
+		aggregate.setHaving(aggregateHaving);
+		String aggregateSql = aggregate.gainSQL(true);
+		assertTrue(aggregateSql, aggregateSql.contains(" HAVING (count(`id`)>0)"));
+	}
+
+	private AbstractSQLConfig<Long, Map<String, Object>, List<Object>> jsonLengthHavingConfig(
+			String database) {
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config =
+				config(database, "Moment");
+		config.setColumn(Arrays.asList("userId", "pictureList"));
+		config.putWhere("userId", 82002L, false);
+		Map<String, Object> having = new LinkedHashMap<>();
+		having.put("having0", "json_length(pictureList)>0");
+		config.setHaving(having);
+		config.setCount(3);
+		return config;
+	}
+
+	@Test
 	public void generatesModeSpecificRegularExpressions() {
 		String mysql = config(SQLConfig.DATABASE_KINGBASE_MYSQL).gainRegExpString("name", "name", "A.*", true);
 		String oracle = config(SQLConfig.DATABASE_KINGBASE_ORACLE).gainRegExpString("name", "name", "A.*", true);

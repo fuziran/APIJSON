@@ -1826,7 +1826,47 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			}
 		}
 
-		return method + parseSQLExpression(KEY_HAVING, expression.substring(start), containRaw, false, null);
+		return gainSQLFunction(method) + parseSQLExpression(KEY_HAVING, expression.substring(start), containRaw, false, null);
+	}
+
+	/**
+	 * Converts a request-level SQL function name to the function exposed by the
+	 * selected database dialect. Keep this mapping deliberately narrow: Kingbase
+	 * in MySQL compatibility mode accepts MySQL-style requests, but its JSON
+	 * implementation exposes PostgreSQL's json_array_length(json) function.
+	 */
+	protected String gainSQLFunction(String function) {
+		return isKingBaseMySQL() && "json_length".equals(function)
+				? "json_array_length" : function;
+	}
+
+	/**
+	 * MySQL permits scalar HAVING expressions without GROUP BY and evaluates
+	 * them per selected row. Kingbase in MySQL compatibility mode applies
+	 * PostgreSQL grouping rules instead, so the equivalent JSON length predicate
+	 * must be evaluated in WHERE. Keep this limited to the known scalar JSON
+	 * length expression; aggregate and all other HAVING expressions are left
+	 * untouched.
+	 */
+	protected boolean shouldMoveHavingToWhere() {
+		if (isKingBaseMySQL() == false || StringUtil.isNotEmpty(getGroup(), true)
+				|| (joinList != null && joinList.isEmpty() == false)) {
+			return false;
+		}
+
+		Map<String, Object> having = getHaving();
+		if (having == null || having.isEmpty()) {
+			return false;
+		}
+
+		for (Object value : having.values()) {
+			String expression = value instanceof String
+					? StringUtil.get((String) value).replace(" ", "") : null;
+			if (expression == null || expression.startsWith("json_length(") == false) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	@Override
@@ -2628,7 +2668,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 							+ " 中 ?value 必须符合正则表达式 " + PATTERN_RANGE + " 且不包含连续减号 -- 或注释符 /* ！不允许多余的空格！");
 				}
 
-				String origin = fun + "(" + (distinct ? PREFIX_DISTINCT : "") + StringUtil.get(ckeys) + ")" + suffix;
+				String origin = gainSQLFunction(fun) + "(" + (distinct ? PREFIX_DISTINCT : "") + StringUtil.get(ckeys) + ")" + suffix;
 				expression = origin + (StringUtil.isEmpty(alias, true) ? "" : gainAs() + quote + alias + quote);
 			}
 			else {
@@ -4100,7 +4140,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			key = key.substring(0, key.length() - 1);
 		}
 		else if (key.endsWith("{")) {
-			lenFun = "json_length";
+			lenFun = gainSQLFunction("json_length");
 			key = key.substring(0, key.length() - 1);
 		}
 		else if (isTest()) {
@@ -5317,19 +5357,29 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		String join = config.gainJoinString();
 
 		String where = config.gainWhereString(true);
+		boolean moveHavingToWhere = config.shouldMoveHavingToWhere();
+		if (moveHavingToWhere) {
+			String having = config.gainHavingString(false);
+			if (StringUtil.isNotEmpty(having, true)) {
+				where += (StringUtil.isEmpty(where, true) ? " WHERE " : " AND ")
+						+ "(" + having + ")";
+			}
+		}
 
 		//根据方法不同，聚合语句不同。GROUP  BY 和 HAVING 可以加在 HEAD 上, HAVING 可以加在 PUT, DELETE 上，GET 全加，POST 全都不加
 		RequestMethod method = config.getMethod();
 		String aggregation;
 		if (RequestMethod.isGetMethod(method, true)) {
-			aggregation = config.gainGroupString(true) + config.gainHavingString(true)
+			aggregation = config.gainGroupString(true)
+					+ (moveHavingToWhere ? "" : config.gainHavingString(true))
 					+ config.gainSampleString(true) + config.gainLatestString(true)
 					+ config.gainPartitionString(true) + config.gainFillString(true)
 					+ config.gainOrderString(true);
 		}
 		else if (RequestMethod.isHeadMethod(method, true)) {
 			// TODO 加参数 isPagination 判断是 GET 内分页 query:2 查总数，不用加这些条件
-			aggregation = config.gainGroupString(true) + config.gainHavingString(true)
+			aggregation = config.gainGroupString(true)
+					+ (moveHavingToWhere ? "" : config.gainHavingString(true))
 					+ config.gainSampleString(true) + config.gainLatestString(true)
 					+ config.gainPartitionString(true) + config.gainFillString(true);
 		}
