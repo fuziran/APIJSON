@@ -105,9 +105,58 @@ public class KingbaseCompatibilityTest {
 					public String gainDBPassword() {
 						return "test";
 					}
+
+					@Override
+					protected void onGainCrossJoinString(Join<Long, Map<String, Object>, List<Object>> join) {
+						// Enable CROSS JOIN in this test configuration, as DemoSQLConfig does.
+					}
 				};
 		config.setDatabase(database);
 		return config;
+	}
+
+	private String crossJoinSql(String database, boolean withOn) throws Exception {
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> main = config(database, "Comment");
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> moment = config(database, "Moment");
+
+		Join<Long, Map<String, Object>, List<Object>> join = new Join<>();
+		join.setJoinType("*");
+		join.setTable("Moment");
+		join.setPath("/Moment/id@");
+		join.setJoinConfig(moment);
+		if (withOn) {
+			Join.On on = new Join.On();
+			on.setKey("id");
+			on.setTargetTable("Comment");
+			on.setTargetKey("momentId");
+			join.setOnList(Arrays.asList(on));
+		}
+		main.setJoinList(Arrays.asList(join));
+		return main.gainJoinString();
+	}
+
+	@Test
+	public void usesInnerJoinForKingbaseMySQLCrossJoinWithOnOnly() throws Exception {
+		String kingbaseWithOn = crossJoinSql(SQLConfig.DATABASE_KINGBASE_MYSQL, true);
+		assertTrue(kingbaseWithOn, kingbaseWithOn.contains(" INNER JOIN ("));
+		assertTrue(kingbaseWithOn, kingbaseWithOn.contains(" ON `Moment`.`id` = `Comment`.`momentId`"));
+		assertFalse(kingbaseWithOn, kingbaseWithOn.contains(" CROSS JOIN ("));
+
+		String kingbaseCartesian = crossJoinSql(SQLConfig.DATABASE_KINGBASE_MYSQL, false);
+		assertTrue(kingbaseCartesian, kingbaseCartesian.contains(" CROSS JOIN ("));
+		assertFalse(kingbaseCartesian, kingbaseCartesian.contains(" INNER JOIN ("));
+
+		for (String database : Arrays.asList(
+				SQLConfig.DATABASE_MYSQL,
+				SQLConfig.DATABASE_POSTGRESQL,
+				SQLConfig.DATABASE_ORACLE,
+				SQLConfig.DATABASE_SQLSERVER,
+				SQLConfig.DATABASE_KINGBASE_ORACLE,
+				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+			String sql = crossJoinSql(database, true);
+			assertTrue(database + ": " + sql, sql.contains(" CROSS JOIN ("));
+			assertFalse(database + ": " + sql, sql.contains(" INNER JOIN ("));
+		}
 	}
 
 	private AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>> callback() {
@@ -258,11 +307,14 @@ public class KingbaseCompatibilityTest {
 
 	@Test
 	public void generatesModeSpecificRegularExpressions() {
-		String mysql = config(SQLConfig.DATABASE_KINGBASE_MYSQL).gainRegExpString("name", "name", "A.*", true);
+		String mysql = config(SQLConfig.DATABASE_MYSQL).gainRegExpString("name", "name", "A.*", true);
+		String kingbaseMySQL = config(SQLConfig.DATABASE_KINGBASE_MYSQL).gainRegExpString("name", "name", "A.*", true);
 		String oracle = config(SQLConfig.DATABASE_KINGBASE_ORACLE).gainRegExpString("name", "name", "A.*", true);
 		String sqlServer = config(SQLConfig.DATABASE_KINGBASE_SQLSERVER).gainRegExpString("name", "name", "A.*", true);
 
-		assertTrue(mysql.startsWith("regexp_like("));
+		assertFalse(mysql.startsWith("(CASE WHEN"));
+		assertTrue(kingbaseMySQL.startsWith("(CASE WHEN `name` IS NULL THEN NULL ELSE regexp_like("));
+		assertTrue(kingbaseMySQL.endsWith(" END)"));
 		assertTrue(oracle.startsWith("regexp_like("));
 		assertTrue(sqlServer.contains(" ~* "));
 	}
@@ -448,7 +500,7 @@ public class KingbaseCompatibilityTest {
 	public void mapsJdbcValuesToJsonSafeValues() throws Exception {
 		AbstractSQLExecutor<Long, Map<String, Object>, List<Object>> executor =
 				new AbstractSQLExecutor<Long, Map<String, Object>, List<Object>>() { };
-		SQLConfig<Long, Map<String, Object>, List<Object>> config = config(SQLConfig.DATABASE_KINGBASE_MYSQL);
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config = config(SQLConfig.DATABASE_KINGBASE_MYSQL);
 
 		Object json = executor.mapResultValue(config, "{\"enabled\":true}", Types.OTHER, "jsonb", "settings");
 		Object array = executor.mapResultValue(config, new Object[] {1, "two"}, Types.ARRAY, "varchar[]", "tags");
@@ -467,11 +519,39 @@ public class KingbaseCompatibilityTest {
 				new SerialClob("ordinary text".toCharArray()), Types.CLOB, "longtext", "description"));
 		assertEquals("2026-07-19T10:20", executor.mapResultValue(config,
 				LocalDateTime.of(2026, 7, 19, 10, 20), Types.TIMESTAMP, "datetime", "createdAt"));
+		assertEquals("2026-07-19 10:20:00.0", executor.mapResultValue(config,
+				Timestamp.valueOf("2026-07-19 10:20:00"), Types.TIMESTAMP, "timestamp", "createdAt"));
+		config.parseSQLExpression("@column", "date_add(date,INTERVAL 2 DAY):datePlus2Days", true, true);
+		assertEquals("2026-07-21T10:20", executor.mapResultValue(config,
+				Timestamp.valueOf("2026-07-21 10:20:00"), Types.TIMESTAMP, "timestamp", "datePlus2Days"));
 		assertEquals(2026, executor.mapResultValue(config, Year.of(2026), Types.SMALLINT, "year", "year"));
 		assertEquals("not json", executor.mapResultValue(config, "not json", Types.OTHER,
 				"business_json_status", "status"));
 		assertEquals(true, executor.mapResultValue(config, "1", Types.BOOLEAN, "bool", "enabled"));
 		assertEquals("NaN", executor.mapResultValue(config, Double.NaN, Types.DOUBLE, "double", "score"));
+	}
+
+	@Test
+	public void reusesOriginalAppJoinValueOnlyForKingbaseMySQLCacheKey() {
+		AbstractSQLExecutor<Long, Map<String, Object>, List<Object>> executor =
+				new AbstractSQLExecutor<Long, Map<String, Object>, List<Object>>() { };
+		Long originalValue = 82001L;
+		List<Object> targetValues = Arrays.<Object>asList(
+				originalValue, 93793L);
+
+		Object kingbaseValue = executor.getAppJoinCacheKeyValue(
+				config(SQLConfig.DATABASE_KINGBASE_MYSQL),
+				new BigDecimal("82001.000"), targetValues);
+		assertTrue(kingbaseValue == originalValue);
+
+		Object nativeValue = executor.getAppJoinCacheKeyValue(
+				config(SQLConfig.DATABASE_MYSQL),
+				new BigDecimal("82001.000"), targetValues);
+		assertEquals(new BigDecimal("82001.000"), nativeValue);
+
+		assertEquals("12345", executor.getAppJoinCacheKeyValue(
+				config(SQLConfig.DATABASE_KINGBASE_MYSQL),
+				"12345", targetValues));
 	}
 
 	@Test

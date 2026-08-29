@@ -156,7 +156,12 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	}
 	@Override
 	public ResultSet execute(@NotNull Statement statement, String sql) throws Exception {
-		statement.execute(sql);
+		if (statement instanceof PreparedStatement) {
+			((PreparedStatement) statement).execute();
+		}
+		else {
+			statement.execute(sql);
+		}
 		ResultSet rs = statement.getResultSet();
 		return rs;
 	}
@@ -927,7 +932,9 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 								+ "\n >>>>>>>>>>>>>>>>>>>>>>>>>>> \n\n");
 
 						//TODO 兼容复杂关联
-						cc.putWhere(key, result.get(key), true);  // APP JOIN 应该有且只有一个 ON 条件
+						Object cacheKeyValue = getAppJoinCacheKeyValue(
+								jc, result.get(key), targetValueList);
+						cc.putWhere(key, cacheKeyValue, true);  // APP JOIN 应该有且只有一个 ON 条件
 						String cacheSql = cc.gainSQL(false);
 						List<M> results = childMap.get(cacheSql);
 
@@ -1026,6 +1033,53 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 			return true;
 		}
 		return columnName.startsWith("_");
+	}
+
+	/**
+	 * Kingbase MySQL mode may expose an integral JOIN key through JDBC with a
+	 * different Java representation from the corresponding main-table value
+	 * (for example String/BigDecimal versus Long). APIJSON's APP JOIN cache is
+	 * keyed by generated SQL, so using the returned representation can quote or
+	 * format the value differently and make the following per-row lookup miss
+	 * the batch-prefetched cache. Reuse the semantically equal original target
+	 * value when building that cache key. Other databases keep the original
+	 * behavior, and EXPLAIN never enters APP JOIN result caching.
+	 */
+	protected Object getAppJoinCacheKeyValue(
+			SQLConfig<T, M, L> joinConfig, Object resultValue,
+			List<Object> targetValueList) {
+		if (joinConfig == null || joinConfig.isKingBaseMySQL() == false) {
+			return resultValue;
+		}
+		if (resultValue == null || targetValueList == null) {
+			return resultValue;
+		}
+
+		for (Object targetValue : targetValueList) {
+			if (isEquivalentKingbaseMySQLAppJoinValue(
+					resultValue, targetValue)) {
+				return targetValue;
+			}
+		}
+		return resultValue;
+	}
+
+	private boolean isEquivalentKingbaseMySQLAppJoinValue(
+			Object left, Object right) {
+		if (Objects.equals(left, right)) {
+			return true;
+		}
+		if (left == null || right == null) {
+			return false;
+		}
+
+		try {
+			return new BigDecimal(left.toString()).compareTo(
+					new BigDecimal(right.toString())) == 0;
+		}
+		catch (NumberFormatException e) {
+			return left.toString().equals(right.toString());
+		}
 	}
 
 	/**resultList.put(position, table);
@@ -1332,6 +1386,10 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		}
 		if (value instanceof Year) {
 			return ((Year) value).getValue();
+		}
+		if (value instanceof Timestamp && config instanceof AbstractSQLConfig
+				&& ((AbstractSQLConfig<?, ?, ?>) config).isKingbaseMySQLLocalDateTimeAlias(label)) {
+			return ((Timestamp) value).toLocalDateTime().toString();
 		}
 		if (value instanceof Timestamp || value instanceof Date || value instanceof TemporalAccessor || value instanceof UUID) {
 			return value.toString();
