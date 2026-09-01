@@ -6520,25 +6520,30 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 			if (enableFakeDelete && method == DELETE) {
 				// 查询 Access 假删除
-				Map<String, Object> accessFakeDeleteMap = AbstractVerifier.ACCESS_FAKE_DELETE_MAP.get(config.getTable());
+				Map<String, Map<String, Object>> fakeDeleteConfigMap = AbstractVerifier.ACCESS_FAKE_DELETE_MAP;
+				Map<String, Object> accessFakeDeleteMap = fakeDeleteConfigMap == null
+						? null : fakeDeleteConfigMap.get(config.getTable());
 
-				Object deletedKey = accessFakeDeleteMap.get(KEY_DELETED_KEY);
-				if (StringUtil.isNotEmpty(deletedKey, true)) {
-					// 假删除需要更新的其他字段，比如：删除时间 deletedTime 之类的
-					Map<String, Object> fakeDeleteMap = new HashMap<>();
-					fakeDeleteMap.put(deletedKey.toString(), accessFakeDeleteMap.get(KEY_DELETED_VALUE));
-					fakeDeleteMap = config.onFakeDelete(fakeDeleteMap);
-
-					Map<String, Object> content = config.getContent();
-					if (content == null || content.isEmpty()) {
-						content = fakeDeleteMap;
-					} else {
-						content.putAll(fakeDeleteMap);
-					}
-
-					config.setMethod(PUT);
-					config.setContent(content);
+				Object deletedKey = accessFakeDeleteMap == null ? null : accessFakeDeleteMap.get(KEY_DELETED_KEY);
+				if ((deletedKey instanceof String) == false || StringUtil.isEmpty(deletedKey, true)) {
+					throw new IllegalArgumentException(config.getTable() + " 对应的假删除配置错误！"
+							+ KEY_DELETED_KEY + ":value 中 value 必须为非空 String！当前值为 " + deletedKey);
 				}
+
+				// 假删除需要更新的其他字段，比如：删除时间 deletedTime 之类的
+				Map<String, Object> fakeDeleteMap = new HashMap<>();
+				fakeDeleteMap.put(deletedKey.toString(), accessFakeDeleteMap.get(KEY_DELETED_VALUE));
+				fakeDeleteMap = config.onFakeDelete(fakeDeleteMap);
+
+				Map<String, Object> content = config.getContent();
+				if (content == null || content.isEmpty()) {
+					content = fakeDeleteMap;
+				} else {
+					content.putAll(fakeDeleteMap);
+				}
+
+				config.setMethod(PUT);
+				config.setContent(content);
 			}
 
 			List<String> cs = new ArrayList<>();

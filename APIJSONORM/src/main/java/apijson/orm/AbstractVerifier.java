@@ -177,6 +177,8 @@ public abstract class AbstractVerifier<T, M extends Map<String, Object>, L exten
 
 		ACCESS_MAP = new HashMap<>(SYSTEM_ACCESS_MAP);
 
+		ACCESS_FAKE_DELETE_MAP = new LinkedHashMap<>();
+
 		REQUEST_MAP = new HashMap<>(ACCESS_MAP.size()*7);  // 单个与批量增删改
 
 		COMPILE_MAP = new HashMap<String, Pattern>();
