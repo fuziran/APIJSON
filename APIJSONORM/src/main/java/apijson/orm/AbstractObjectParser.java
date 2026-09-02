@@ -486,6 +486,11 @@ public abstract class AbstractObjectParser<T, M extends Map<String, Object>, L e
 				if (target == null) { // String#equals(null)会出错
 					Log.d(TAG, "onParse  target == null  >>  return true;");
 
+					if (method == POST || method == PUT) {
+						throw new UnsupportedOperationException("引用赋值 " + path + "/" + key + ": " + targetPath
+								+ " 解析失败，POST 和 PUT 接口必须保证每个对象执行都成功！");
+					}
+
 					if (Log.DEBUG) {
 						parser.putWarnIfNeed(AbstractParser.KEY_REF, path + "/" + key + ": " + targetPath + " 引用赋值获取路径对应的值为 null！请检查路径是否错误！");
 					}
