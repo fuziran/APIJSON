@@ -161,6 +161,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		DATABASE_LIST.add(DATABASE_COCKROACHDB);
 		DATABASE_LIST.add(DATABASE_DAMENG);
 		DATABASE_LIST.add(DATABASE_KINGBASE);
+		DATABASE_LIST.add(DATABASE_KINGBASE_AUTO);
 		DATABASE_LIST.add(DATABASE_KINGBASE_MYSQL);
 		DATABASE_LIST.add(DATABASE_KINGBASE_ORACLE);
 		DATABASE_LIST.add(DATABASE_KINGBASE_SQLSERVER);
@@ -1112,12 +1113,47 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		return this;
 	}
 	/**
-	 * @return db == null ? DEFAULT_DATABASE : db
+	 * @return the SQL dialect, detecting Kingbase compatibility on first use and
+	 *         rejecting a mismatch when a specific Kingbase mode was configured
 	 */
 	@NotNull
 	public String gainSQLDatabase() {
 		String db = getDatabase();
-		return db == null ? DEFAULT_DATABASE : db;  // "" 表示已设置，不需要用全局默认的 StringUtil.isEmpty(db, false)) {
+		db = db == null ? DEFAULT_DATABASE : db;
+        if (!KingbaseModeResolver.requiresDetection(db)) {
+            return db;
+        }
+        String actual = KINGBASE_MODE_RESOLVER.resolve(this);
+        // An explicit mode is a contract with the caller, not just a routing label.
+        // Validate after resolution so a shared cache cannot bypass this contract.
+        if (!DATABASE_KINGBASE_AUTO.equals(db)) {
+            KingbaseModeResolver.requireExpectedMode(actual, db);
+        }
+        // Backend expectations are checked for every caller, including cache hits.
+        return KingbaseModeResolver.requireExpectedMode(actual, gainKingbaseExpectedDatabase());
+	}
+
+	/** Shared successful detections; clear after replacing a data source's target. */
+	public static final KingbaseModeResolver KINGBASE_MODE_RESOLVER = new KingbaseModeResolver();
+
+    /** Optional backend-only assertion. Null accepts any supported detected mode.
+     * Override using deployment configuration, never request-controlled values. */
+    protected String gainKingbaseExpectedDatabase() {
+        return null;
+    }
+
+	/**
+	 * Borrow a dedicated detection connection. It is closed (returned to its pool)
+	 * by the resolver. Override for application-managed DataSources. This method
+	 * and the cache key must not depend on an already resolved SQL dialect.
+	 */
+	protected java.sql.Connection openKingbaseModeConnection() throws java.sql.SQLException {
+		return java.sql.DriverManager.getConnection(gainDBUri(), gainDBAccount(), gainDBPassword());
+	}
+
+	/** Override when routing uses additional application context. Never include passwords. */
+	protected Object gainKingbaseModeCacheKey() {
+		return Arrays.asList(getClass(), gainDBUri(), gainDBAccount(), getDatasource(), getNamespace(), getCatalog());
 	}
 
 	@Override
@@ -1207,10 +1243,11 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 	@Override
 	public boolean isKingBase() {
-		return isKingBase(gainSQLDatabase());
+		String db = getDatabase();
+		return isKingBase(db == null ? DEFAULT_DATABASE : db);
 	}
 	public static boolean isKingBase(String db) {
-		return KingbaseSQLDialect.from(db).isKingbase();
+		return DATABASE_KINGBASE_AUTO.equals(db) || KingbaseSQLDialect.from(db).isKingbase();
 	}
 
 	@Override
@@ -1866,6 +1903,15 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		if (expression.indexOf(")AGAINST(") > start) {
 			return parseSQLExpression(KEY_HAVING, expression, containRaw, false, null);
 		}
+		if (isSQLServer() && "json_length".equals(method)) {
+			java.util.regex.Matcher matcher = Pattern.compile(
+					"^json_length\\(([A-Za-z_][A-Za-z0-9_]*)\\)(>=|<=|<>|!=|=|>|<)([0-9]+)$")
+					.matcher(expression.replace(" ", ""));
+			if (matcher.matches()) {
+				return "(SELECT COUNT(*) FROM OPENJSON(" + gainKey(matcher.group(1)) + ")) "
+						+ matcher.group(2) + " " + matcher.group(3);
+			}
+		}
 
 		return gainSQLFunction(method) + parseSQLExpression(KEY_HAVING, expression.substring(start), containRaw, false, null);
 	}
@@ -1892,6 +1938,21 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			boolean distinct, String suffix) {
 		String original = gainSQLFunction(function) + "("
 				+ (distinct ? PREFIX_DISTINCT : "") + StringUtil.get(args) + ")" + suffix;
+		if ("date_format".equalsIgnoreCase(function) && !distinct && args != null && args.length == 2
+				&& (isSQLServer() || isKingBaseSQLServer())) {
+			String format = args[1];
+			format = "REPLACE(" + format + ", '%Y', '" + (isSQLServer() ? "yyyy" : "YYYY") + "')";
+			format = "REPLACE(" + format + ", '%m', 'MM')";
+			format = "REPLACE(" + format + ", '%d', '" + (isSQLServer() ? "dd" : "DD") + "')";
+			format = "REPLACE(" + format + ", '%H', '" + (isSQLServer() ? "HH" : "HH24") + "')";
+			if (isKingBaseSQLServer()) {
+				// In SQL Server mode datetime2 is not directly accepted by to_char;
+				// TIMESTAMP names the rowversion type, so parse its text explicitly.
+				return "to_char(to_timestamp(CAST(" + args[0]
+						+ " AS varchar), 'YYYY-MM-DD HH24:MI:SS'), " + format + ")" + suffix;
+			}
+			return "FORMAT(" + args[0] + ", " + format + ")" + suffix;
+		}
 		if (isKingBaseMySQL() == false
 				|| ("date_add".equalsIgnoreCase(function) == false
 				&& "date_sub".equalsIgnoreCase(function) == false)
@@ -1918,7 +1979,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 * are left untouched.
 	 */
 	protected boolean shouldMoveHavingToWhere() {
-		if (isKingBaseMySQL() == false || StringUtil.isNotEmpty(getGroup(), true)
+		if ((isKingBaseMySQL() == false && isSQLServer() == false && isKingBaseSQLServer() == false)
+				|| StringUtil.isNotEmpty(getGroup(), true)
 				|| (joinList != null && joinList.isEmpty() == false)) {
 			return false;
 		}
@@ -2305,12 +2367,38 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 			//			String[] ss = StringUtil.split(order);
 			if (StringUtil.isEmpty(order, true)) {  //SQL Server 子查询内必须指定 OFFSET 才能用 ORDER BY
-				String idKey = getIdKey();
+				String[] groupedKeys = StringUtil.split(getGroup());
+				String idKey = groupedKeys != null && groupedKeys.length > 0
+						? groupedKeys[0] : getIdKey();
+				Subquery<T, M, L> source = getFrom();
+				List<String> sourceColumns = source == null || source.gainConfig() == null
+						? null : source.gainConfig().getColumn();
+				if (sourceColumns != null && sourceColumns.isEmpty() == false
+						&& StringUtil.isName(sourceColumns.get(0))) {
+					idKey = sourceColumns.get(0);
+				}
 				if (StringUtil.isEmpty(idKey, true)) {
 					idKey = "id";
 					// ORDER BY NULL 不行，SQL Server 会报错，必须要有排序，才能使用 OFFSET FETCH，如果没有 idKey，请求中指定 @order 即可
 				}
 				order = idKey; //让数据库调控默认升序还是降序  + "+";
+			}
+			else if ((isSQLServer() || isKingBaseSQLServer())
+					&& canAppendSQLServerPaginationId() && order.contains("rand()") == false) {
+				String idKey = getIdKey();
+				String[] orderKeys = StringUtil.split(order);
+				boolean hasId = false;
+				if (orderKeys != null) {
+					for (String key : orderKeys) {
+						if (idKey.equals(key) || (idKey + "+").equals(key) || (idKey + "-").equals(key)) {
+							hasId = true;
+							break;
+						}
+					}
+				}
+				if (hasId == false) {
+					order += "," + idKey + "+";
+				}
 			}
 
 			//不用这么全面，毕竟没有语法问题还浪费性能，如果有其它问题，让前端传的 JSON 直接加上 @order 来解决
@@ -2368,6 +2456,27 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		}
 
 		return (hasPrefix ? " ORDER BY " : "") + StringUtil.concat(StringUtil.get(keys), joinOrder, ", ");
+	}
+
+	/** Only a plain single-table projection can safely acquire a primary-key tie breaker.
+	 * DISTINCT, derived tables and expressions may not expose the underlying key;
+	 * their explicit ordering must remain under the caller's control. */
+	private boolean canAppendSQLServerPaginationId() {
+		if (isDistinct() || getFrom() != null || StringUtil.isNotEmpty(getGroup(), true)
+				|| (getHaving() != null && !getHaving().isEmpty())
+				|| (getJoinList() != null && !getJoinList().isEmpty())
+				|| (getRaw() != null && getRaw().contains(KEY_COLUMN))
+				|| !StringUtil.isName(getIdKey())) {
+			return false;
+		}
+		List<String> columns = getColumn();
+		if (columns != null) {
+			if (columns.isEmpty()) return false;
+			for (String column : columns) {
+				if (!StringUtil.isName(column)) return false;
+			}
+		}
+		return true;
 	}
 
 	@Override
@@ -2895,10 +3004,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 	/**
 	 * Generates a full-text relevance expression for MATCH(...) AGAINST(...).
-	 * MySQL-family databases retain the request syntax. KingbaseES in MySQL
-	 * compatibility mode uses PostgreSQL-style full-text functions internally,
-	 * so natural-language requests are translated without changing the APIJSON
-	 * request or its response alias.
+	 * Native MySQL retains the request syntax. KingbaseES uses a different
+	 * tokenizer, matching model and relevance algorithm, so accepting a translated
+	 * expression would violate the cross-database response contract.
 	 */
 	protected String gainMatchAgainstExpression(String key, String function, String[] columns, String[] againstArgs) {
 		String columnSql = StringUtil.get(columns);
@@ -2907,35 +3015,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			return function + "(" + columnSql + ") AGAINST (" + againstSql + ")";
 		}
 
-		final String naturalLanguageMode = " IN NATURAL LANGUAGE MODE";
-		String upper = againstSql.toUpperCase();
-		if (upper.endsWith(naturalLanguageMode) == false) {
-			// Do not silently change the semantics of MySQL BOOLEAN MODE. A future
-			// dialect implementation can add a verified token/operator conversion.
-			return function + "(" + columnSql + ") AGAINST (" + againstSql + ")";
-		}
-
-		String query = againstSql.substring(0, againstSql.length() - naturalLanguageMode.length()).trim();
-		StringBuilder document = new StringBuilder("concat_ws(' '");
-		if (columns != null) {
-			for (String column : columns) {
-				document.append(", coalesce(").append(column).append(", '')");
-			}
-		}
-		document.append(')');
-
-		String vector = "to_tsvector('simple', " + document + ")";
-		String tsquery = "to_tsquery('simple', regexp_replace(replace(" + query
-				+ ", '*', ':*'), '\\s+', ' | ', 'g'))";
-		if (KEY_COLUMN.equals(key)) {
-			// ts_rank_cd assigns an unweighted single lexeme match a score of 0.1,
-			// while the APIJSON/MySQL examples use MATCH(...) >= 1 as the
-			// relevance threshold. Scale only the Kingbase projection so that a
-			// positive single match reaches that threshold without losing rank
-			// ordering. Native database expressions remain untouched.
-			return "(10 * ts_rank_cd(" + vector + ", " + tsquery + "))";
-		}
-		return "(CASE WHEN " + vector + " @@ " + tsquery + " THEN 1 ELSE 0 END)";
+		throw new UnsupportedOperationException(
+				"KINGBASE_MYSQL does not support MySQL MATCH ... AGAINST with response-equivalent semantics; "
+						+ "use a shared search implementation or remove this operation from the portable API contract");
 	}
 
 
@@ -3187,7 +3269,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 				items[i] = "(";
 				for (int j = 0; j < vs.size(); j++) {
-					items[i] += ((j <= 0 ? "" : ",") + gainValue(vs.get(j)));
+                    String inputColumn = isKingBase() && getColumn() != null && j < getColumn().size()
+                            ? getColumn().get(j) : null;
+                    items[i] += ((j <= 0 ? "" : ",") + gainValue(inputColumn, inputColumn, vs.get(j)));
 				}
 				items[i] += ")";
 			}
@@ -4318,6 +4402,45 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			throw new IllegalArgumentException(key + ":value 中key不合法！不支持 ! 以外的逻辑符 ！");
 		}
 
+        // KES Oracle/SQL Server JSON has no equality operator. Compare JSONB values
+        // for explicit JSON casts, preserving parameter binding and structural equality.
+        String declaredType = getCast() == null ? null : getCast().get(key);
+        if (value != null && !(value instanceof Subquery) && rawSQL == null
+                && rc.equals(column) && declaredType != null && "JSON".equalsIgnoreCase(declaredType.trim())
+                && (isKingBaseOracle() || isKingBaseSQLServer())) {
+            return "cast(" + gainKey(column) + " AS JSONB)" + (not ? " != " : " = ")
+                    + "cast(" + gainValue(key, column, value) + " AS JSONB)";
+        }
+        // XML equality is explicitly textual (serialized XML), not XML canonical equivalence.
+        // Keep XML parameter validation before comparing the serialized values.
+        if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+                && declaredType != null && "XML".equalsIgnoreCase(declaredType.trim())
+                && (isKingBaseOracle() || isKingBaseSQLServer())) {
+            return "cast(" + gainKey(column) + " AS TEXT)" + (not ? " != " : " = ")
+                    + "cast(" + gainValue(key, column, value) + " AS TEXT)";
+        }
+        // BFILE equality compares directory/file locators, never file contents.
+        if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+                && declaredType != null && "BFILE".equalsIgnoreCase(declaredType.trim()) && isKingBaseOracle()) {
+            return "cast(" + gainKey(column) + " AS TEXT)" + (not ? " != " : " = ")
+                    + "cast(" + gainValue(key, column, value) + " AS TEXT)";
+        }
+        // Generated rowversion tokens are compared as canonical hex text. Do not cast
+        // the driver-returned ASCII bytes to BYTEA or reinterpret them as a new token.
+        if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+                && declaredType != null && "ROWVERSION".equalsIgnoreCase(declaredType.trim()) && isKingBaseSQLServer()) {
+            return "lower(cast(" + gainKey(column) + " AS TEXT))" + (not ? " != " : " = ")
+                    + gainValue(KingbaseTypeSupport.rowversionPredicateInput(value));
+        }
+        // V9R1C10 SQL Server binary equality can match unequal byte sequences.
+        // BYTEA preserves full length/content for explicitly typed binary predicates.
+        if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+                && declaredType != null && declaredType.trim().toUpperCase(java.util.Locale.ROOT)
+                    .matches("(?:BINARY|VARBINARY)(?:\\s*\\(\\s*[1-9][0-9]*\\s*\\))?")
+                && isKingBaseSQLServer()) {
+            return "cast(" + gainKey(column) + " AS BYTEA)" + (not ? " != " : " = ")
+                    + "cast(" + gainValue(key, column, value) + " AS BYTEA)";
+        }
 		String logic = value == null && rawSQL == null ? (not ? SQL.IS_NOT : SQL.IS) : (not ? " != " : " = ");
 		return gainKey(column) + logic + (value instanceof Subquery ? gainSubqueryString((Subquery<T, M, L>) value)
 				: (rawSQL != null ? rawSQL : gainValue(key, column, value)));
@@ -4411,7 +4534,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			//				return "cast(?" + SQL.AS + type + ")";
 			//			}
 
-			preparedValueList.add(value);
+            String[] bfile = isKingBase() ? KingbaseTypeSupport.bfileInput(type, value) : null;
+            if (bfile != null) {
+                preparedValueList.add(bfile[0]);
+                preparedValueList.add(bfile[1]);
+                return "bfilename(cast(? AS cstring), cast(? AS cstring))";
+            }
+            Object input = isKingBase() ? KingbaseTypeSupport.castInput(type, value) : value;
+            preparedValueList.add(isKingBaseMySQL() ? KingbaseTypeSupport.mysqlBitInput(type, input) : input);
 			return StringUtil.isEmpty(type, true) ? "?" : "cast(?" + SQL.AS + type + ")";
 		}
 
@@ -4628,14 +4758,29 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 * @return key REGEXP 'value'
 	 */
 	public String gainRegExpString(String key, String column, String value, boolean ignoreCase) {
+		if (isSQLServer()) {
+			// SQL Server releases before 2025 have no REGEXP_LIKE. Translate only
+			// the regular expressions that have an exact LIKE equivalent.
+			// The Kingbase SQL Server mode uses the database's case-insensitive
+			// collation for these operators, as does the native SQL Server fixture.
+			String target = gainKey(column) + " COLLATE Latin1_General_100_CI_AS";
+			if ("^[0-9]+$".equals(value)) {
+				return "(" + target + " LIKE '[0-9]%' AND " + target + " NOT LIKE '%[^0-9]%')";
+			}
+			if (value != null && value.matches("[A-Za-z0-9]+(?:\\.\\*)?")) {
+				String literal = value.endsWith(".*") ? value.substring(0, value.length() - 2) : value;
+				return target + " LIKE " + gainValue(key, column, "%" + literal + "%");
+			}
+			throw new IllegalArgumentException("SQL Server does not support this regular expression: " + value);
+		}
 		if (isPSQL() || isKingBaseSQLServer()) {
 			return gainKey(column) + " ~" + (ignoreCase ? "* " : " ") + gainValue(key, column, value);
 		}
-		if (isKingBaseMySQL()) {
+		if (isKingBaseMySQL() || isKingBaseOracle()) {
 			String target = gainKey(column);
 			String regexp = "regexp_like(" + target + ", " + gainValue(key, column, value)
 					+ (ignoreCase ? ", 'i'" : ", 'c'") + ")";
-			// Kingbase MySQL mode returns false for regexp_like(NULL, ...), while MySQL
+			// Kingbase modes return false for regexp_like(NULL, ...), while native databases
 			// returns NULL. Preserve MySQL's three-valued logic so an enclosing NOT/OR
 			// condition does not turn a NULL source value into a positive match.
 			return "(CASE WHEN " + target + " IS NULL THEN NULL ELSE " + regexp + " END)";
@@ -4963,7 +5108,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				else if (isKingBase() && isKingBaseOracle() == false) {
 					condition += (gainKey(column) + "::jsonb @> " + gainValue(key, column, newJSONArray(c)) + "::jsonb");
 				}
-				else if (isOracle() || isDameng() || isKingBaseOracle()) {
+					else if (isSQLServer()) {
+						String json = gainKey(column);
+						String jsonPath = StringUtil.isEmpty(path, true) ? "" : ", " + gainValue(key, column, path);
+						condition += "EXISTS (SELECT 1 FROM OPENJSON(" + json + jsonPath
+								+ ") AS j WHERE j.[value] = CONVERT(NVARCHAR(MAX), "
+								+ gainValue(key, column, c) + "))";
+					}
+					else if (isOracle() || isDameng() || isKingBaseOracle()) {
 					condition += ("json_textcontains(" + gainKey(column) + ", " + (StringUtil.isEmpty(path, true)
 							? "'$'" : gainValue(key, column, path)) + ", " + gainValue(key, column, c == null ? null : c.toString()) + ")");
 				}
@@ -5302,7 +5454,17 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			) : config.gainSQLSchema();
 
 			String q = config.getQuote();
-			return "CALL " + q + sch + q + "." + (hasPrefix ? procedure.substring(ind + 1) : procedure);
+			String call = q + sch + q + "." + (hasPrefix ? procedure.substring(ind + 1) : procedure);
+			if (config.isSQLServer()) {
+				int open = call.indexOf('(');
+				int close = call.lastIndexOf(')');
+				if (open < 0 || close < open) {
+					throw new IllegalArgumentException("SQL Server procedure call requires arguments in parentheses");
+				}
+				String arguments = call.substring(open + 1, close).trim();
+				return "EXEC " + call.substring(0, open) + (arguments.isEmpty() ? "" : " " + arguments);
+			}
+			return config.isOracle() || config.isKingBaseOracle() ? "BEGIN " + call + "; END;" : "CALL " + call;
 		}
 
 		String tablePath = config.gainTablePath();
@@ -5557,6 +5719,16 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			return sql;
 		}
 		int offset = getOffset(getPage(), count);
+		// Native Oracle pagination avoids exposing RN and wrapping duplicate JOIN
+		// column names. Oracle 12.1 still restricts duplicate row-limiting columns.
+		// Do not use Oracle version rules for Kingbase or Dameng compatibility modes.
+		if (isOracle()) {
+			int[] version = gainDBVersionNums();
+			if (version != null && version.length > 0 && (version[0] > 12
+					|| version[0] == 12 && version.length > 1 && version[1] >= 2)) {
+				return sql + " OFFSET " + offset + " ROWS FETCH NEXT " + count + " ROWS ONLY";
+			}
+		}
 		String quote = getQuote();
 		String alias = quote + gainSQLAlias() + quote;
 		return "SELECT * FROM (SELECT " + alias + ".*, ROWNUM "+ quote + "RN" + quote +" FROM (" + sql + ") " + alias
@@ -5717,9 +5889,21 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					// equivalent INNER JOIN when this compatibility mode has ON predicates.
 					boolean kingbaseCrossJoinWithOn = "*".equals(type) && isKingBaseMySQL()
 							&& onList != null && onList.isEmpty() == false;
+					// SQL Server rejects ORDER BY in an unpaged derived table. The
+					// outer query already includes this join's order via gainOrderString.
+					String joinOrder = jc.getOrder();
+					boolean outerOrderOnly = isSQLServer() && jc.getCount() <= 0
+							&& StringUtil.isNotEmpty(joinOrder, true);
+					String joinQuery;
+					try {
+						if (outerOrderOnly) jc.setOrder((String) null);
+						joinQuery = jc.gainSQL(isPrepared());
+					} finally {
+						if (outerOrderOnly) jc.setOrder(joinOrder);
+					}
 					sql = ( "<".equals(type) ? " LEFT" : (">".equals(type) ? " RIGHT"
 							: (kingbaseCrossJoinWithOn ? " INNER" : " CROSS")) )
-							+ " JOIN ( " + jc.gainSQL(isPrepared()) + " ) " + gainAs() + quote + jt + quote;
+							+ " JOIN ( " + joinQuery + " ) " + gainAs() + quote + jt + quote;
 					sql = concatJoinOn(sql, quote, j, jt, onList);
 
 					jc.setMain(false).setKeyPrefix(true);
@@ -5869,7 +6053,11 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					}
 					else if (rt.endsWith("~")) {
 						boolean ignoreCase = "*~".equals(rt);
-						if (isPSQL()) {
+							if (isSQLServer()) {
+								sql += (first ? ON : AND) + (isNot ? "NOT " : "")
+										+ "REGEXP_LIKE(" + lk + ", " + rk + (ignoreCase ? ", 'i'" : ", 'c'") + ")";
+							}
+						else if (isPSQL()) {
 							sql += (first ? ON : AND) + lk + (isNot ? NOT : "") + " ~" + (ignoreCase ? "* " : " ") + rk;
 						}
 						else if (isKingBaseSQLServer()) {
@@ -6232,7 +6420,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			// @null >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 			// @cast <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-			String[] casts = StringUtil.split(cast);
+			String[] casts = config.isKingBase() ? KingbaseTypeSupport.splitCasts(cast) : StringUtil.split(cast);
 			Map<String, String> castMap = null;
 			if (casts != null && casts.length > 0) {
 				castMap = new HashMap<>(casts.length);
@@ -6243,7 +6431,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 						throw new IllegalArgumentException(table + ":{} 里的 @cast: 'key0:type0,key1:type1..' 中 '"
 								+ c +  "' 对应的 key 的字符 '" + p.getKey() + "' 不合法！不允许为空！");
 					}
-					if (StringUtil.isName(p.getValue()) == false) {
+					if ((config.isKingBase() ? KingbaseTypeSupport.validCast(p.getValue()) : StringUtil.isName(p.getValue())) == false) {
 						throw new IllegalArgumentException(table + ":{} 里的 @cast: 'key0:type0,key1:type1..' 中 '"
 								+ c +  "' 对应的 type 的字符 '" + p.getValue() + "' 不合法！必须符合类型名称格式！");
 					}

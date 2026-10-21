@@ -71,11 +71,11 @@ public enum KingbaseSQLDialect {
 	 * KingbaseES exposes an explain statement returning the plan result set.
 	 * SQL Server's session-level STATISTICS PROFILE switch is therefore neither
 	 * required nor suitable for APIJSON's one-shot explain request. Oracle mode
-	 * retains its compatible EXPLAIN PLAN FOR spelling.
+	 * uses the plan-returning FORMAT TEXT spelling; PLAN FOR only returns a placeholder.
 	 */
 	public String getExplainPrefix() {
 		if (isOracle()) {
-			return "EXPLAIN PLAN FOR ";
+			return "EXPLAIN (FORMAT TEXT) ";
 		}
 		return isKingbase() ? "EXPLAIN " : null;
 	}
