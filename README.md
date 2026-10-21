@@ -1,7 +1,3 @@
-Tencent is pleased to support the open source community by making APIJSON available.   <br/>
-Copyright (C) 2020 Tencent.  All rights reserved. <br/>
-This source code is licensed under the Apache License Version 2.0 <br/>
-
 <h1 align="center" style="text-align:center;">
   APIJSON
 </h1>
@@ -10,41 +6,40 @@ This source code is licensed under the Apache License Version 2.0 <br/>
 <p align="center">🏆 Real-Time no-code, powerful and secure ORM 🚀 <br />providing APIs and Docs without coding by Backend, and Frontend can customize response JSONs</p>
 
 <p align="center" >
-  <a href="https://github.com/Tencent/APIJSON/blob/master/README-Chinese.md">&nbsp;中文版&nbsp;</a>
-  <a href="https://github.com/Tencent/APIJSON/blob/master/Document.md">&nbsp;Document&nbsp;</a>
+  <a href="/README-Chinese.md">&nbsp;中文版&nbsp;</a>
+  <a href="/Document.md">&nbsp;Document&nbsp;</a>
   <a href="https://search.bilibili.com/all?keyword=APIJSON">&nbsp;Video&nbsp;</a>
   <a href="http://apijson.cn/api">&nbsp;Test&nbsp;</a>
-  <a href="https://deepwiki.com/Tencent/APIJSON">Ask AI</a>
-  <a href="https://context7.com/tencent/apijson">Skills</a>
-  <a href="https://context7.com/tencent/apijson">MCP</a>
-  <a href="https://github.com/TommyLemon/A2API">A2API</a>
+  <a href="https://deepwiki.com/APIJSON/APIJSON">Ask AI</a>
+  <a href="https://context7.com/apijson/apijson">Skills</a>
+  <a href="https://context7.com/apijson/apijson">MCP</a>
 </p>
 
 <p align="center" >
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL"><img src="https://img.shields.io/badge/MySQL-5.7%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/PostgreSQL"><img src="https://img.shields.io/badge/PostgreSQL-9.5%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/SQLServer"><img src="https://img.shields.io/badge/SQLServer-2012%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Oracle"><img src="https://img.shields.io/badge/Oracle-12C%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/DB2"><img src="https://img.shields.io/badge/DB2-7.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL"><img src="https://img.shields.io/badge/MariaDB-10.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL"><img src="https://img.shields.io/badge/TiDB-2.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/PostgreSQL"><img src="https://img.shields.io/badge/CockroachDB-25.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/PostgreSQL"><img src="https://img.shields.io/badge/openGauss-5.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Dameng"><img src="https://img.shields.io/badge/Dameng-7.6%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL"><img src="https://img.shields.io/badge/Kingbase-8.6%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL"><img src="https://img.shields.io/badge/MySQL-5.7%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/PostgreSQL"><img src="https://img.shields.io/badge/PostgreSQL-9.5%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/SQLServer"><img src="https://img.shields.io/badge/SQLServer-2012%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/Oracle"><img src="https://img.shields.io/badge/Oracle-12C%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/DB2"><img src="https://img.shields.io/badge/DB2-7.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL"><img src="https://img.shields.io/badge/MariaDB-10.0%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL"><img src="https://img.shields.io/badge/TiDB-2.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/PostgreSQL"><img src="https://img.shields.io/badge/CockroachDB-25.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/PostgreSQL"><img src="https://img.shields.io/badge/openGauss-5.0%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/Dameng"><img src="https://img.shields.io/badge/Dameng-7.6%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL"><img src="https://img.shields.io/badge/Kingbase-8.6%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/Milvus-2.2.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/DuckDB"><img src="https://img.shields.io/badge/DuckDB-1.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONBoot-MultiDataSource"><img src="https://img.shields.io/badge/SurrealDB-2.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/ClickHouse"><img src="https://img.shields.io/badge/ClickHouse-21.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/PostgreSQL"><img src="https://img.shields.io/badge/PostGIS-3.5%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONDemo-MultiDataSource-Elasticsearch"><img src="https://img.shields.io/badge/Elasticsearch-7.17%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Manticore"><img src="https://img.shields.io/badge/ManticoreSearch-7.4%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Presto"><img src="https://img.shields.io/badge/Presto-0.277%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Trino"><img src="https://img.shields.io/badge/Trino-400%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL"><img src="https://img.shields.io/badge/TDSQL-cloud-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL"><img src="https://img.shields.io/badge/TencentDB-cloud-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONDemo-MultiDataSource-Redis"><img src="https://img.shields.io/badge/Redis-5.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONDemo-MultiDataSource-Kafka"><img src="https://img.shields.io/badge/Kafka-3.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/DuckDB"><img src="https://img.shields.io/badge/DuckDB-1.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONBoot-MultiDataSource"><img src="https://img.shields.io/badge/SurrealDB-2.0%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/ClickHouse"><img src="https://img.shields.io/badge/ClickHouse-21.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/PostgreSQL"><img src="https://img.shields.io/badge/PostGIS-3.5%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONDemo-MultiDataSource-Elasticsearch"><img src="https://img.shields.io/badge/Elasticsearch-7.17%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/Manticore"><img src="https://img.shields.io/badge/ManticoreSearch-7.4%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/Presto"><img src="https://img.shields.io/badge/Presto-0.277%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/Trino"><img src="https://img.shields.io/badge/Trino-400%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL"><img src="https://img.shields.io/badge/TDSQL-cloud-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL"><img src="https://img.shields.io/badge/TencentDB-cloud-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONDemo-MultiDataSource-Redis"><img src="https://img.shields.io/badge/Redis-5.0%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONDemo-MultiDataSource-Kafka"><img src="https://img.shields.io/badge/Kafka-3.2%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/Snowflake-7.0%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/Databricks-13.0%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/chenyanlann/APIJSONBoot_Hive"><img src="https://img.shields.io/badge/Hive-3.1%2B-brightgreen.svg?style=flat"></a>  
@@ -52,18 +47,18 @@ This source code is licensed under the Apache License Version 2.0 <br/>
   <a ><img src="https://img.shields.io/badge/MongoDB-Altlas%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/Cassandra-2.1%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/InfluxDB-2.6%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/TDengine"><img src="https://img.shields.io/badge/TDengine-2.6%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/PostgreSQL"><img src="https://img.shields.io/badge/TimescaleDB-17.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/TDengine"><img src="https://img.shields.io/badge/TDengine-2.6%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/PostgreSQL"><img src="https://img.shields.io/badge/TimescaleDB-17.1%2B-brightgreen.svg?style=flat"></a>
   <a ><img src="https://img.shields.io/badge/IoTDB-1.3%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONBoot-MultiDataSource" ><img src="https://img.shields.io/badge/DataBend-1.2%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/Doris" ><img src="https://img.shields.io/badge/Doris-2.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/StarRocks" ><img src="https://img.shields.io/badge/StarRocks-4.1%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/MySQL" ><img src="https://img.shields.io/badge/KingbaseES-V9%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/QuestDB" ><img src="https://img.shields.io/badge/QuestDB-8.2%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONBoot-MultiDataSource" ><img src="https://img.shields.io/badge/SQLite-3.46%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONBoot-MultiDataSource" ><img src="https://img.shields.io/badge/DataBend-1.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/Doris" ><img src="https://img.shields.io/badge/Doris-2.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/StarRocks" ><img src="https://img.shields.io/badge/StarRocks-4.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/MySQL" ><img src="https://img.shields.io/badge/KingbaseES-V9%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/QuestDB" ><img src="https://img.shields.io/badge/QuestDB-8.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONBoot-MultiDataSource" ><img src="https://img.shields.io/badge/SQLite-3.46%2B-brightgreen.svg?style=flat"></a>
 </p>
 <p align="center" >
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server"><img src="https://img.shields.io/badge/Java-1.8%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server"><img src="https://img.shields.io/badge/Java-1.8%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/glennliao/apijson-go"><img src="https://img.shields.io/badge/Go-1.18%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/j2go/apijson-go"><img src="https://img.shields.io/badge/Go-1.16%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/liaozb/APIJSON.NET"><img src="https://img.shields.io/badge/CSharp-2.1%2B-brightgreen.svg?style=flat"></a>
@@ -71,19 +66,19 @@ This source code is licensed under the Apache License Version 2.0 <br/>
   <a href="https://github.com/kevinaskin/apijson-node"><img src="https://img.shields.io/badge/Node.js-ES6%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/zhangchunlin/uliweb-apijson"><img src="https://img.shields.io/badge/Python-3%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/APIJSON/apijson-rust"><img src="https://img.shields.io/badge/Rust-1.90%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONDemo-Script"><img src="https://img.shields.io/badge/Lua-5.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONDemo-Script"><img src="https://img.shields.io/badge/Lua-5.2%2B-brightgreen.svg?style=flat"></a>
 </p>
 <p align="center" >
-  <a href="https://github.com/APIJSON/APIJSON-Demo/blob/master/APIJSON-Java-Server/APIJSONDemo/pom.xml#L48-L52"><img src="https://img.shields.io/badge/Spring-4.3.2%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/blob/master/APIJSON-Java-Server/APIJSONDemo/pom.xml#L48-L52"><img src="https://img.shields.io/badge/SpringBoot-1.4.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/blob/master/APIJSON-Java-Server/APIJSONFinal/pom.xml#L59-L68"><img src="https://img.shields.io/badge/JFinal-3.5%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/blob/main/APIJSON-Java-Server/APIJSONDemo/pom.xml#L48-L52"><img src="https://img.shields.io/badge/Spring-4.3.2%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/blob/main/APIJSON-Java-Server/APIJSONDemo/pom.xml#L48-L52"><img src="https://img.shields.io/badge/SpringBoot-1.4.0%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/blob/main/APIJSON-Java-Server/APIJSONFinal/pom.xml#L59-L68"><img src="https://img.shields.io/badge/JFinal-3.5%2B-brightgreen.svg?style=flat"></a>
   <a href="https://github.com/vincent109/apijson-nutz"><img src="https://img.shields.io/badge/Nutz-2.4.2%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Java-Server/APIJSONDemo-ShardingSphere"><img src="https://img.shields.io/badge/ShardingSphere-5.4.1%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Java-Server/APIJSONDemo-ShardingSphere"><img src="https://img.shields.io/badge/ShardingSphere-5.4.1%2B-brightgreen.svg?style=flat"></a>
 </p>
 <p align="center" >
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-Android"><img src="https://img.shields.io/badge/Android-4.0%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-iOS"><img src="https://img.shields.io/badge/iOS-7%2B-brightgreen.svg?style=flat"></a>
-  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/master/APIJSON-JavaScript"><img src="https://img.shields.io/badge/Web-ES6%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-Android"><img src="https://img.shields.io/badge/Android-4.0%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-iOS"><img src="https://img.shields.io/badge/iOS-7%2B-brightgreen.svg?style=flat"></a>
+  <a href="https://github.com/APIJSON/APIJSON-Demo/tree/main/APIJSON-JavaScript"><img src="https://img.shields.io/badge/Web-ES6%2B-brightgreen.svg?style=flat"></a>
 </p>
 
 <p align="center" >
@@ -196,9 +191,54 @@ Note: The UI is APIAuto, the URL+JSON is APIJSON<br/>
 ![](https://raw.githubusercontent.com/TommyLemon/StaticResources/master/APIJSON/APIJSON_query_summary.gif) 
 
 
-## <h2 id="2">2.Backend usage<h2/>
+## <h2 id="2">2.Backend usage [![](https://jitpack.io/v/APIJSON/APIJSON.svg)](https://jitpack.io/#APIJSON/APIJSON) <h2/>
+
 You can skip this step and use 'apijson.cn:8080'. <br />
 See https://github.com/APIJSON/APIJSON-Demo/blob/master/APIJSON-Java-Server/README-English.md
+
+### Maven
+#### 1. Add the JitPack repository to pom.xml
+```xml
+	<repositories>
+		<repository>
+		    <id>jitpack.io</id>
+		    <url>https://jitpack.io</url>
+		</repository>
+	</repositories>
+```
+<br />
+
+#### 2. Add the APIJSON dependency to pom.xml
+```xml
+	<dependency>
+	    <groupId>com.github.APIJSON</groupId>
+	    <artifactId>APIJSON</artifactId>
+	    <version>latest</version>
+	</dependency>
+```
+
+<br />
+<br />
+
+### Gradle
+#### 1. Add the JitPack repository in your root build.gradle at the end of repositories
+```gradle
+	allprojects {
+		repositories {
+			...
+			maven { url 'https://jitpack.io' }
+		}
+	}
+```
+<br />
+
+#### 2. Add the APIJSON dependency in one of your modules(such as `app`)
+```gradle
+	dependencies {
+	        implementation 'com.github.APIJSON:APIJSON:latest'
+	}
+```
+
 
 <br />
 
@@ -219,7 +259,7 @@ Complex production App like Twitter tweets<br />
 ## <h2 id="4">4. Contributing<h2/> 
 	
 We are always looking for more developers to help implementing new features, fix bugs, etc. <br />
-Please have a look at the [open issues](https://github.com/Tencent/APIJSON/issues) before opening a new one. <br />
+Please have a look at the [open issues](https://github.com/APIJSON/APIJSON/issues) before opening a new one. <br />
 
 Fork the project and send a pull request.<br />
 
@@ -228,7 +268,7 @@ Fork the project and send a pull request.<br />
 
 ## <h2 id="5">5. Releases<h2/> 
 	
-See the latest release [here](https://github.com/Tencent/APIJSON/releases)
+See the latest release [here](https://github.com/APIJSON/APIJSON/releases)
 
 <br />
 
@@ -237,14 +277,14 @@ See the latest release [here](https://github.com/Tencent/APIJSON/releases)
 https://github.com/TommyLemon <br />
 ![](https://github.com/user-attachments/assets/cef2bd45-b20d-469e-8781-1d647cf0477f)
 
-If you have any questions or suggestions, you can [create an issue](https://github.com/Tencent/APIJSON/issues) or [send me an e-mail](mailto:tommylemon@qq.com).
+If you have any questions or suggestions, you can [create an issue](https://github.com/APIJSON/APIJSON/issues) or [send me an e-mail](mailto:tommylemon@qq.com).
 
 <br />
 <br />
 
 ### Users of APIJSON:
 
-https://github.com/Tencent/APIJSON/issues/187 
+[issues/187](https://github.com/APIJSON/APIJSON/issues/187)
 <div style="float:left">
   <img src="https://user-images.githubusercontent.com/5738175/126525534-461c3e33-57b1-4630-af7f-f1238ca4ab98.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/126525251-c05e64c6-6b60-4457-a46e-dea7dcfb80cd.png" height="75">
@@ -282,7 +322,7 @@ https://github.com/Tencent/APIJSON/issues/187
   <img src="https://user-images.githubusercontent.com/5738175/195759031-bdcf4146-34cb-470c-a576-37d4e8fdca24.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/195759040-c7db99ff-3404-411d-b9ba-23547aaf1509.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/195759093-927fd5c3-9e1e-4648-8a35-c9d97630d086.png" height="75">
-  <img src="https://github.com/Tencent/APIJSON/assets/5738175/10636d69-1d54-4666-aa8a-472c4ecb9413" height="75">
+  <img src="https://github.com/APIJSON/APIJSON/assets/5738175/10636d69-1d54-4666-aa8a-472c4ecb9413" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/195759079-ffc4483e-46a6-4e28-a0e0-25186ea008ab.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/195759186-a90a04db-0bd4-47bc-bab0-c160dcf48e53.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/195759204-7bdb09f5-2194-41c1-8e59-1461bd5ff4c1.png" height="75">
@@ -293,22 +333,21 @@ https://github.com/Tencent/APIJSON/issues/187
   <img src="https://user-images.githubusercontent.com/5738175/195759292-baa3924c-cf56-49cf-820c-d1e0a88cac3b.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/226652404-927a945e-22f5-42f8-99da-3a0863a5a3b5.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/226653817-fcc57051-53e2-4c8d-bda6-3effba4032ee.png" height="75">
-  <img src="https://github.com/Tencent/APIJSON/assets/5738175/7c71b8f9-f1cc-4305-8e97-c212f476e377" height="75">
+  <img src="https://github.com/APIJSON/APIJSON/assets/5738175/7c71b8f9-f1cc-4305-8e97-c212f476e377" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/226652405-561963cb-73e4-4d65-986c-ebfafcfe7b73.jpeg" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/226652403-92546c06-6dc4-4f46-b697-02a4073833f8.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/226657098-d63c0dd1-24d0-4819-9045-b8213ab2e31f.png" height="75">
   <img src="https://user-images.githubusercontent.com/5738175/226657183-b6bbf284-3eb4-431e-8549-6356b7929e45.png" height="75">
-  <img src="https://github.com/Tencent/APIJSON/assets/5738175/9de7c199-4f29-44ed-9cb6-ad5e4fa44dfa" height="90">
-  <img src="https://github.com/Tencent/APIJSON/assets/5738175/d7155a65-22f7-49c6-8354-c309f36e4065" height="60">
-  <img src="https://github.com/Tencent/APIJSON/assets/5738175/f5a6ec8d-d9a8-49d0-a284-c50f1376647e" height="75">
+  <img src="https://github.com/APIJSON/APIJSON/assets/5738175/9de7c199-4f29-44ed-9cb6-ad5e4fa44dfa" height="90">
+  <img src="https://github.com/APIJSON/APIJSON/assets/5738175/d7155a65-22f7-49c6-8354-c309f36e4065" height="60">
+  <img src="https://github.com/APIJSON/APIJSON/assets/5738175/f5a6ec8d-d9a8-49d0-a284-c50f1376647e" height="75">
 
 <br />
 	
-[More APIJSON Users](https://github.com/Tencent/APIJSON/issues/73)
+[More APIJSON Users](https://github.com/APIJSON/APIJSON/issues/73)
 
 ### Contributers of APIJSON:
-Contributers for the APIJSON core project(7 Tencent engineers, 1 Microsoft engineer, 1 Zhihu architect, 1 Bytedance(TikTok) engineer, 1 NetEase engineer, 1 Zoom engineer, 1 YTO Express engineer, 1 Zhilian engineer, 1 UC student、3 SUSTech students, etc.): <br />
-https://github.com/Tencent/APIJSON/blob/master/CONTRIBUTING.md <br />
+[Contributers](/CONTRIBUTING.md) for the APIJSON core project(7 Tencent engineers, 1 Microsoft engineer, 1 Zhihu architect, 1 Bytedance(TikTok) engineer, 1 NetEase engineer, 1 Zoom engineer, 1 YTO Express engineer, 1 Zhilian engineer, 1 UC student、3 SUSTech students, etc.): <br />
 <br />
 <img width="815" height="181" alt="Screenshot 2026-04-18 at 05 28 48" src="https://github.com/user-attachments/assets/7a5a76f4-b1a2-4ac0-b7ee-901611adeab6" />
 
@@ -333,10 +372,13 @@ Thanks to all contributers of APIJSON!
 ### Statistics
 Hundreds of employees from big famous companies(Tencent, Google, Apple, Microsoft, Amazon, Huawei, Alibaba, Paypal, Meituan, Bytedance(TikTok), IBM, Baidu, JD, NetEase, Kuaishou, Shopee, etc.) starred, <br >
 a lot of employees from big famous companies(Tencent, Huawei, Microsoft, Zoom, etc.) created PR/Issue, thank you all~ <br >
-[![Stargazers over time](https://starchart.cc/Tencent/APIJSON.svg)](https://starchart.cc/Tencent/APIJSON)
-<img width="948" alt="image" src="https://github.com/Tencent/APIJSON/assets/5738175/2784e399-11c8-4eeb-8257-44533df61827">
+
+<img width="948" alt="image" src="https://github.com/user-attachments/assets/e94428c8-c462-4a92-9447-0370098ad8ac" />
 <img width="948" alt="image" src="https://user-images.githubusercontent.com/5738175/195752839-554d0204-aa5d-48d8-b838-d1a0cb0e8690.png">
 <img width="948" alt="image" src="https://user-images.githubusercontent.com/5738175/195752907-a09d9505-beb3-47a6-b7b9-079b58964b4d.png">
+
+APIJSON was shown as a top open source Java projects on OSS Compass [#518](https://github.com/APIJSON/APIJSON/issues/518) <br >
+<img width="1495" alt="image" src="https://user-images.githubusercontent.com/5738175/227158515-4e8bab65-a4b9-402b-b60b-29c08b4d930d.png">
 
 ### Ecosystem
 [APIJSON-Demo](https://github.com/APIJSON/APIJSON-Demo) Demo projects with document and SQL files for APIJSON with different programming languages and different frameworks
@@ -349,7 +391,7 @@ a lot of employees from big famous companies(Tencent, Huawei, Microsoft, Zoom, e
 
 [apijson-router](https://github.com/APIJSON/apijson-router) A router plugin for APIJSON, expose undercontrolled RESTful-like HTTP API to public network, transfer to APIJSON request and execute
   
-[apijson-column](https://github.com/APIJSON/apijson-column) A column plugin for Tencent APIJSON, supports Column Inverse and Column Mapping
+[apijson-column](https://github.com/APIJSON/apijson-column) A column plugin for APIJSON, supports Column Inverse and Column Mapping
 
 [apijson-jackson](https://github.com/APIJSON/apijson-jackson) A jackson plugin for APIJSON
 
