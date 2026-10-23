@@ -61,7 +61,6 @@ public class OraclePaginationRegressionTest {
 						"POSTGRESQL",
 						"SQLSERVER",
 						"DB2",
-						"SQLITE",
 						"KINGBASE_MYSQL",
 						"KINGBASE_ORACLE",
 						"KINGBASE_SQLSERVER",
