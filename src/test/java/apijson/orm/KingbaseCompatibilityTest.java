@@ -100,14 +100,14 @@ public class KingbaseCompatibilityTest {
 
 					@Override
 					protected Object gainKingbaseModeCacheKey() {
-						return Arrays.asList(getClass(), getDatabase());
+						return Arrays.asList(getClass(), database);
 					}
 
 					@Override
 					protected Connection openKingbaseModeConnection() throws SQLException {
 						KingbaseModeResolverTest.Config stub =
 								new KingbaseModeResolverTest.Config();
-						stub.mode = getDatabase().substring("KINGBASE_".length());
+						stub.mode = database.substring("KINGBASE_".length());
 						return stub.openKingbaseModeConnection();
 					}
 
@@ -137,7 +137,7 @@ public class KingbaseCompatibilityTest {
 						// Enable CROSS JOIN in this test configuration, as DemoSQLConfig does.
 					}
 				};
-		config.setDatabase(database);
+		config.setDatabase(requestDatabase(database));
 		return config;
 	}
 
@@ -214,7 +214,16 @@ public class KingbaseCompatibilityTest {
 		}
 	}
 
+	// Test fixtures choose the simulated server dialect; public configuration always uses AUTO.
+	private static String requestDatabase(String dialect) {
+		return dialect != null && dialect.startsWith("KINGBASE_") ? SQLConfig.DATABASE_KINGBASE_AUTO : dialect;
+	}
+
 	private AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>> callback() {
+		return callback(null);
+	}
+
+	private AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>> callback(String detectedDialect) {
 		return new AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>>() {
 			@Override
 			public SQLConfig<Long, Map<String, Object>, List<Object>> getSQLConfig(
@@ -225,7 +234,7 @@ public class KingbaseCompatibilityTest {
 					String catalog,
 					String schema,
 					String table) {
-				return KingbaseCompatibilityTest.this.config(database, table).setMethod(method);
+				return KingbaseCompatibilityTest.this.config(detectedDialect == null ? database: detectedDialect, table).setMethod(method);
 			}
 		};
 	}
@@ -727,14 +736,14 @@ public class KingbaseCompatibilityTest {
 						SQLConfig.DATABASE_KINGBASE_SQLSERVER,
 						SQLConfig.DATABASE_KINGBASE_ORACLE)) {
 			Map<String, Object> request = new LinkedHashMap<>();
-			request.put("@database", database);
+			request.put("@database", requestDatabase(database));
 			request.put("table_name", "Moment");
 			request.put("column_comment[>", 2);
 			request.put("@column", "column_name");
 
 			SQLConfig<Long, Map<String, Object>, List<Object>> config =
 					AbstractSQLConfig.newSQLConfig(
-							RequestMethod.GET, "Column", null, request, null, false, callback());
+							RequestMethod.GET, "Column", null, request, null, false, callback(database));
 			config.setCount(50);
 			String sql = config.gainSQL(false);
 
@@ -1296,13 +1305,13 @@ public class KingbaseCompatibilityTest {
 						SQLConfig.DATABASE_KINGBASE_ORACLE,
 						SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
 			Map<String, Object> request = new LinkedHashMap<>();
-			request.put("@database", database);
+			request.put("@database", requestDatabase(database));
 			request.put("@cast", "amount:DECIMAL(24,9),payload:VARBINARY(16)");
 			request.put("amount", "1234567890.123456789");
 			request.put("payload", "base64:AAH/");
 			SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
 					AbstractSQLConfig.newSQLConfig(
-							RequestMethod.GET, "TypeProbe", null, request, null, false, callback());
+							RequestMethod.GET, "TypeProbe", null, request, null, false, callback(database));
 			String sql = cfg.gainSQL(true);
 			assertTrue(sql, sql.contains("DECIMAL(24,9)"));
 			assertTrue(sql, sql.contains("VARBINARY(16)"));
@@ -1369,13 +1378,13 @@ public class KingbaseCompatibilityTest {
 								test[1].replace("(6)", "(0)"),
 								test[1].toLowerCase().replace("(6)", " ( 6 )"))) {
 					Map<String, Object> request = new LinkedHashMap<>();
-					request.put("@database", test[0]);
+					request.put("@database", requestDatabase(test[0]));
 					request.put("@cast", "v:" + type);
 					request.put("id", 1L);
 					request.put("v", "2026-01-02 12:34:56.123456");
 					SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
 							AbstractSQLConfig.newSQLConfig(
-									method, "TypeProbe", null, request, null, false, callback());
+									method, "TypeProbe", null, request, null, false, callback(test[0]));
 					String sql = cfg.gainSQL(true);
 					assertTrue(sql, sql.contains("cast(? AS " + type + ")"));
 					assertTrue(
@@ -1398,7 +1407,7 @@ public class KingbaseCompatibilityTest {
 							"DATETIME(6,2)",
 							"DATETIME2(6) WITH TIME ZONE")) {
 				Map<String, Object> request = new LinkedHashMap<>();
-				request.put("@database", database);
+				request.put("@database", requestDatabase(database));
 				request.put("@cast", "v:" + type);
 				request.put("id", 1L);
 				request.put("v", "2026-01-02 12:34:56.123456");
@@ -1410,7 +1419,7 @@ public class KingbaseCompatibilityTest {
 							request,
 							null,
 							false,
-							callback());
+							callback(database));
 					org.junit.Assert.fail("Accepted unsafe/invalid cast: " + type);
 				} catch (IllegalArgumentException expected) {
 				}
@@ -1425,7 +1434,7 @@ public class KingbaseCompatibilityTest {
 				Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER", "MYSQL")) {
 			for (String key : Arrays.asList("v", "v!")) {
 				Map<String, Object> request = new LinkedHashMap<>();
-				request.put("@database", db);
+				request.put("@database", requestDatabase(db));
 				request.put("@cast", key + ":JSON");
 				request.put(key, "{\"a\":1}");
 				SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
@@ -1436,7 +1445,7 @@ public class KingbaseCompatibilityTest {
 								request,
 								null,
 								false,
-								callback());
+								callback(db));
 				String sql = cfg.gainSQL(true);
 				assertEquals(
 						sql,
@@ -1454,7 +1463,7 @@ public class KingbaseCompatibilityTest {
 		for (String db : Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER")) {
 			for (String key : Arrays.asList("v", "v!")) {
 				Map<String, Object> request = new LinkedHashMap<>();
-				request.put("@database", db);
+				request.put("@database", requestDatabase(db));
 				request.put("@cast", key + ":VARBINARY(16)");
 				request.put(key, "base64:AP+AQQ==");
 				SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
@@ -1465,7 +1474,7 @@ public class KingbaseCompatibilityTest {
 								request,
 								null,
 								false,
-								callback());
+								callback(db));
 				String sql = cfg.gainSQL(true);
 				assertEquals(sql, db.equals("KINGBASE_SQLSERVER"), sql.contains("AS BYTEA"));
 				org.junit.Assert.assertArrayEquals(
@@ -1481,7 +1490,7 @@ public class KingbaseCompatibilityTest {
 				Arrays.asList("KINGBASE_ORACLE", "KINGBASE_SQLSERVER", "KINGBASE_MYSQL", "MYSQL")) {
 			for (String key : Arrays.asList("v", "v!")) {
 				Map<String, Object> request = new LinkedHashMap<>();
-				request.put("@database", db);
+				request.put("@database", requestDatabase(db));
 				request.put("@cast", key + ":XML");
 				request.put(key, "<r a=\"1\">text</r>");
 				SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
@@ -1492,7 +1501,7 @@ public class KingbaseCompatibilityTest {
 								request,
 								null,
 								false,
-								callback());
+								callback(db));
 				String sql = cfg.gainSQL(true);
 				assertEquals(
 						sql,
@@ -1508,12 +1517,12 @@ public class KingbaseCompatibilityTest {
 	public void explicitBfilePredicateBindsLocatorParts() throws Exception {
 		for (String key : Arrays.asList("v", "v!")) {
 			Map<String, Object> request = new LinkedHashMap<>();
-			request.put("@database", "KINGBASE_ORACLE");
+			request.put("@database", "KINGBASE_AUTO");
 			request.put("@cast", key + ":BFILE");
 			request.put(key, "bfilename('TEST_DIR', 'a''b.bin')");
 			SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
 					AbstractSQLConfig.newSQLConfig(
-							RequestMethod.GET, "TypeProbe", null, request, null, false, callback());
+							RequestMethod.GET, "TypeProbe", null, request, null, false, callback("KINGBASE_ORACLE"));
 			String sql = cfg.gainSQL(true);
 			assertTrue(sql, sql.contains("AS TEXT"));
 			assertEquals(Arrays.asList("TEST_DIR", "a'b.bin"), cfg.getPreparedValueList());
@@ -1536,7 +1545,7 @@ public class KingbaseCompatibilityTest {
 															java.nio.charset.StandardCharsets
 																	.US_ASCII)))) {
 				Map<String, Object> request = new LinkedHashMap<>();
-				request.put("@database", "KINGBASE_SQLSERVER");
+				request.put("@database", "KINGBASE_AUTO");
 				request.put("@cast", key + ":ROWVERSION");
 				request.put(key, value);
 				SQLConfig<Long, Map<String, Object>, List<Object>> cfg =
@@ -1547,7 +1556,7 @@ public class KingbaseCompatibilityTest {
 								request,
 								null,
 								false,
-								callback());
+								callback("KINGBASE_SQLSERVER"));
 				String sql = cfg.gainSQL(true);
 				assertTrue(sql, sql.contains("lower(cast("));
 				assertFalse(sql, sql.contains("AS BYTEA"));

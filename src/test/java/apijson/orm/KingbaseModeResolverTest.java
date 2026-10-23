@@ -22,7 +22,7 @@ public class KingbaseModeResolverTest {
 
 		Config() {
 			super(RequestMethod.GET, "User");
-			setDatabase(DATABASE_KINGBASE_MYSQL);
+			setDatabase(DATABASE_KINGBASE_AUTO);
 			setSchema("public");
 		}
 
@@ -168,19 +168,11 @@ public class KingbaseModeResolverTest {
 	}
 
 	@Test
-	public void autoUsesActualModeAndExplicitModesRequireAMatch() throws Exception {
-		for (String configured :
-				Arrays.asList(
-						"KINGBASE_AUTO",
-						"KINGBASE_MYSQL",
-						"KINGBASE_ORACLE",
-						"KINGBASE_SQLSERVER")) {
+	public void autoUsesAllActualModesWithoutChangingConfiguration() throws Exception {
 			for (String actual : Arrays.asList("mysql", "oracle", "sqlserver")) {
 				Config detected = new Config();
-				detected.setDatabase(configured);
 				detected.mode = " " + actual.toUpperCase(Locale.ROOT) + " ";
-				detected.setDatasource(configured + actual);
-				// Offline reference deliberately freezes the pre-detection dialect.
+				detected.setDatasource(actual);
 				Config reference =
 						new Config() {
 							@Override
@@ -190,28 +182,91 @@ public class KingbaseModeResolverTest {
 						};
 				String expected = "KINGBASE_" + actual.toUpperCase(Locale.ROOT);
 				reference.setDatabase(expected);
-				detected.setCount(10).setPage(1);
+				// Frozen internal dialect for SQL comparison only.
+            detected.setCount(10).setPage(1);
 				reference.setCount(10).setPage(1);
-				if ("KINGBASE_AUTO".equals(configured) || configured.equals(expected)) {
-					assertEquals(expected, detected.gainSQLDatabase());
+				assertEquals(expected, detected.gainSQLDatabase());
 					assertEquals(reference.gainSQL(false), detected.gainSQL(false));
 					assertEquals(reference.gainSQL(true), detected.gainSQL(true));
 					assertEquals("mysql".equals(actual), detected.isKingBaseMySQL());
 					assertEquals("oracle".equals(actual), detected.isKingBaseOracle());
 					assertEquals("sqlserver".equals(actual), detected.isKingBaseSQLServer());
-				} else {
-					IllegalStateException mismatch =
-							assertThrows(IllegalStateException.class, detected::gainSQLDatabase);
-					assertTrue(mismatch.getMessage().contains("expected " + configured));
-					assertTrue(mismatch.getMessage().contains(expected));
-					assertThrows(IllegalStateException.class, () -> detected.gainSQL(true));
-				}
-				assertEquals(configured, detected.getDatabase());
+				assertEquals("KINGBASE_AUTO", detected.getDatabase());
 				assertEquals(1, detected.opened.get());
 				assertEquals(1, detected.closed.get());
 				assertEquals(1, detected.statementsClosed.get());
 				assertEquals(1, detected.resultsClosed.get());
 				assertEquals(0, reference.opened.get());
+        }
+    }
+
+    @Test public void unlistedDatabasesAreRejectedAsBackendAndDefaultConfiguration() {
+        String previous = AbstractSQLConfig.DEFAULT_DATABASE;
+        try {
+            for (String dialect : Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER", "UNKNOWN_DB", "mysql")) {
+                assertFalse(AbstractSQLConfig.DATABASE_LIST.contains(dialect));
+                assertFalse(KingbaseModeResolver.requiresDetection(dialect));
+                Config c = new Config(); c.setDatabase(dialect);
+                IllegalArgumentException error = assertThrows(IllegalArgumentException.class, c::gainSQLDatabase);
+                assertTrue(error.getMessage().contains("KINGBASE_AUTO"));
+                AbstractSQLConfig.DEFAULT_DATABASE = dialect; c.setDatabase(null);
+                assertThrows(IllegalArgumentException.class, c::gainSQLDatabase);
+                assertEquals(0, c.opened.get());
+            }
+        } finally { AbstractSQLConfig.DEFAULT_DATABASE = previous; }
+    }
+
+    @Test public void unlistedDatabasesAreRejectedInRequestsBeforeCreatingAConfig() {
+        for (String dialect : Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER", "UNKNOWN_DB", "mysql")) {
+            Map<String, Object> request = new LinkedHashMap<>(); request.put("@database", dialect);
+            apijson.orm.exception.UnsupportedDataTypeException error = assertThrows(apijson.orm.exception.UnsupportedDataTypeException.class, () -> AbstractSQLConfig.newSQLConfig(
+                RequestMethod.GET, "User", null, request, null, false,
+                new AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>>() {
+                    public SQLConfig<Long, Map<String, Object>, List<Object>> getSQLConfig(RequestMethod method,
+                        String database, String datasource, String namespace, String catalog, String schema, String table) {
+                        throw new AssertionError("Unlisted database must be rejected before routing");
+                    }
+                }));
+            assertTrue(error.getMessage().contains("KINGBASE_AUTO"));
+        }
+    }
+
+    @Test public void backendValidationUsesThePublicAllowlistIncludingRegisteredExtensions() {
+        for (String database : AbstractSQLConfig.DATABASE_LIST) {
+            AbstractSQLConfig.validateConfiguredDatabase(database);
+            if (!"KINGBASE_AUTO".equals(database)) {
+                Config c = new Config(); c.setDatabase(database);
+                assertEquals(database, c.gainSQLDatabase()); assertEquals(0, c.opened.get());
+            }
+        }
+        for (String invalid : Arrays.asList(null, "", " ", "UNKNOWN_DB")) {
+            assertThrows(IllegalArgumentException.class, () -> AbstractSQLConfig.validateConfiguredDatabase(invalid));
+        }
+        String custom = "REGISTERED_TEST_DB";
+        AbstractSQLConfig.DATABASE_LIST.add(custom);
+        try {
+            Config c = new Config(); c.setDatabase(custom);
+            assertEquals(custom, c.gainSQLDatabase()); assertEquals(0, c.opened.get());
+        } finally { AbstractSQLConfig.DATABASE_LIST.remove(custom); }
+        assertThrows(IllegalArgumentException.class, () -> AbstractSQLConfig.validateConfiguredDatabase(custom));
+    }
+
+    @Test public void optionalBackendExpectationAcceptsMatchingModesAndRejectsMismatches() {
+        for (String actual : Arrays.asList("mysql", "oracle", "sqlserver")) {
+            for (String expected : Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER", "invalid")) {
+                Config c = new Config() {
+                    @Override protected String gainKingbaseExpectedDatabase() { return " " + expected.toLowerCase(Locale.ROOT) + " "; }
+                };
+                c.mode = actual; c.setDatasource(actual + expected);
+                if (expected.equals("KINGBASE_" + actual.toUpperCase(Locale.ROOT))) {
+                    assertEquals(expected, c.gainSQLDatabase());
+                } else if ("invalid".equals(expected)) {
+                    assertThrows(IllegalArgumentException.class, c::gainSQLDatabase);
+                } else {
+                    assertThrows(IllegalStateException.class, c::gainSQLDatabase);
+                    assertThrows(IllegalStateException.class, () -> c.gainSQL(true));
+                }
+                assertEquals(1, c.opened.get());
 			}
 		}
 	}
@@ -254,7 +309,7 @@ public class KingbaseModeResolverTest {
 		b.setDatasource("b");
 		b.mode = "oracle";
 		Config copy = new Config();
-		copy.setDatabase("KINGBASE_MYSQL");
+		copy.setDatabase("KINGBASE_AUTO");
 		copy.setDatasource("a");
 		copy.fail = true;
 		assertEquals("KINGBASE_MYSQL", a.gainSQLDatabase());
@@ -267,23 +322,6 @@ public class KingbaseModeResolverTest {
 		assertEquals(2, a.opened.get());
 		a.setDatasource("b");
 		assertEquals("KINGBASE_ORACLE", a.gainSQLDatabase());
-	}
-
-	@Test
-	public void explicitModeMismatchFailsOnSharedCacheHit() {
-		Config auto = new Config();
-		auto.setDatabase("KINGBASE_AUTO");
-		auto.mode = "oracle";
-		assertEquals("KINGBASE_ORACLE", auto.gainSQLDatabase());
-
-		Config mysql = new Config();
-		mysql.setDatabase("KINGBASE_MYSQL");
-		mysql.fail = true;
-		IllegalStateException mismatch =
-				assertThrows(IllegalStateException.class, mysql::gainSQLDatabase);
-		assertTrue(mismatch.getMessage().contains("expected KINGBASE_MYSQL"));
-		assertTrue(mismatch.getMessage().contains("KINGBASE_ORACLE"));
-		assertEquals(0, mysql.opened.get());
 	}
 
 	@Test
@@ -396,7 +434,7 @@ public class KingbaseModeResolverTest {
 		assertTrue(main.gainSQL(false).contains("`Comment`"));
 		assertEquals(1, main.opened.get() + vice.opened.get());
 		vice.setDatasource("b");
-		vice.setDatabase("KINGBASE_ORACLE");
+		vice.setDatabase("KINGBASE_AUTO");
 		vice.mode = "oracle";
 		assertTrue(vice.isKingBaseOracle());
 	}

@@ -9,21 +9,22 @@ import static org.junit.Assert.*;
 
 public class JoinColumnOwnershipTest {
 	static class Config extends AbstractSQLConfig<Long, Map<String, Object>, List<Object>> {
-		Config(String db, String table, String... columns) {
+		final String dialect;
+        Config(String db, String table, String... columns) {
 			super(RequestMethod.GET, table);
-			setDatabase(db);
+			dialect=db;setDatabase(db.startsWith("KINGBASE_") ? DATABASE_KINGBASE_AUTO : db);
 			setColumn(columns.length == 0 ? null : Arrays.asList(columns));
 		}
 
 		@Override
 		protected Object gainKingbaseModeCacheKey() {
-			return Arrays.asList(getClass(), getDatabase());
+			return Arrays.asList(getClass(), dialect);
 		}
 
 		@Override
 		protected Connection openKingbaseModeConnection() throws SQLException {
 			KingbaseModeResolverTest.Config stub = new KingbaseModeResolverTest.Config();
-			stub.mode = getDatabase().substring("KINGBASE_".length());
+			stub.mode = dialect.substring("KINGBASE_".length());
 			return stub.openKingbaseModeConnection();
 		}
 
@@ -46,11 +47,6 @@ public class JoinColumnOwnershipTest {
 		@Override
 		public String gainSQL(boolean prepared) {
 			return "SELECT " + getTable();
-		}
-
-		@Override
-		public boolean isKingBaseOracle() {
-			return "KINGBASE_ORACLE".equals(getDatabase());
 		}
 	}
 

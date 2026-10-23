@@ -4,7 +4,7 @@ This source code is licensed under the Apache License Version 2.0.*/
 
 package apijson.orm;
 
-/** Centralized SQL capabilities for KingbaseES compatibility modes. */
+/** Internal SQL capabilities for detected KingbaseES modes; configure connections with KINGBASE_AUTO. */
 public enum KingbaseSQLDialect {
 	NONE(null, null, false, false),
 	LEGACY(SQLConfig.DATABASE_KINGBASE, "\"", false, false),

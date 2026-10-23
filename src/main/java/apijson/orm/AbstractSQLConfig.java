@@ -162,9 +162,6 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		DATABASE_LIST.add(DATABASE_DAMENG);
 		DATABASE_LIST.add(DATABASE_KINGBASE);
 		DATABASE_LIST.add(DATABASE_KINGBASE_AUTO);
-		DATABASE_LIST.add(DATABASE_KINGBASE_MYSQL);
-		DATABASE_LIST.add(DATABASE_KINGBASE_ORACLE);
-		DATABASE_LIST.add(DATABASE_KINGBASE_SQLSERVER);
 		DATABASE_LIST.add(DATABASE_ELASTICSEARCH);
 		DATABASE_LIST.add(DATABASE_MANTICORE);
 		DATABASE_LIST.add(DATABASE_CLICKHOUSE);
@@ -184,6 +181,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		DATABASE_LIST.add(DATABASE_MONGODB);
 		DATABASE_LIST.add(DATABASE_CASSANDRA);
 		DATABASE_LIST.add(DATABASE_KAFKA);
+		DATABASE_LIST.add(DATABASE_SQLITE);
 		DATABASE_LIST.add(DATABASE_MQ);
 		DATABASE_LIST.add(DATABASE_DUCKDB);
 		DATABASE_LIST.add(DATABASE_SURREALDB);
@@ -1112,23 +1110,30 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		this.database = database;
 		return this;
 	}
+    /** Validate a resolved backend/default database against the public configuration allowlist. */
+    public static void validateConfiguredDatabase(String database) {
+        if (!DATABASE_LIST.contains(database)) {
+            throw new IllegalArgumentException("Unsupported database configuration: " + database
+                    + "; allowed values: " + DATABASE_LIST);
+        }
+    }
 	/**
-	 * @return the SQL dialect, detecting Kingbase compatibility on first use and
-	 *         rejecting a mismatch when a specific Kingbase mode was configured
+	 * @return the SQL dialect, detecting KINGBASE_AUTO on first use and checking
+	 *         the optional backend expectation on every resolution
 	 */
 	@NotNull
 	public String gainSQLDatabase() {
-		String db = getDatabase();
+		return resolveSQLDatabase(getDatabase());
+	}
+
+    /** Resolve a configured route, including routes supplied by framework configuration stores. */
+    protected String resolveSQLDatabase(String db) {
 		db = db == null ? DEFAULT_DATABASE : db;
+        validateConfiguredDatabase(db);
 		if (!KingbaseModeResolver.requiresDetection(db)) {
 			return db;
 		}
 		String actual = KINGBASE_MODE_RESOLVER.resolve(this);
-		// An explicit mode is a contract with the caller, not just a routing label.
-		// Validate after resolution so a shared cache cannot bypass this contract.
-		if (!DATABASE_KINGBASE_AUTO.equals(db)) {
-			KingbaseModeResolver.requireExpectedMode(actual, db);
-		}
 		// Backend expectations are checked for every caller, including cache hits.
 		return KingbaseModeResolver.requireExpectedMode(actual, gainKingbaseExpectedDatabase());
 	}

@@ -15,12 +15,9 @@ public final class KingbaseModeResolver {
 	private final ConcurrentHashMap<Object, FutureTask<String>> cache = new ConcurrentHashMap<>();
 	private final ThreadLocal<Boolean> resolving = new ThreadLocal<>();
 
-	/** The configured name routes the connection; the detected mode is checked by SQLConfig. */
+    /** Only AUTO is a configuration entry; concrete modes are internal dialects. */
 	public static boolean requiresDetection(String database) {
-		return SQLConfig.DATABASE_KINGBASE_AUTO.equals(database)
-				|| SQLConfig.DATABASE_KINGBASE_MYSQL.equals(database)
-				|| SQLConfig.DATABASE_KINGBASE_ORACLE.equals(database)
-				|| SQLConfig.DATABASE_KINGBASE_SQLSERVER.equals(database);
+        return SQLConfig.DATABASE_KINGBASE_AUTO.equals(database);
 	}
 
 	@FunctionalInterface

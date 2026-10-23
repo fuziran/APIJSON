@@ -26,11 +26,12 @@ public interface SQLConfig<T, M extends Map<String, Object>, L extends List<Obje
 	String DATABASE_TIDB = "TIDB"; // https://www.pingcap.com/tidb
 	String DATABASE_COCKROACHDB = "COCKROACHDB"; // https://www.cockroachlabs.com
 	String DATABASE_DAMENG = "DAMENG"; // https://www.dameng.com
-	String DATABASE_KINGBASE_AUTO = "KINGBASE_AUTO"; // Recommended configuration: detect the server mode for this data source
-	String DATABASE_KINGBASE = "KINGBASE"; // https://www.kingbase.com.cn
-	String DATABASE_KINGBASE_MYSQL = "KINGBASE_MYSQL"; // Require the server's MySQL compatibility mode
-	String DATABASE_KINGBASE_ORACLE = "KINGBASE_ORACLE"; // Require the server's Oracle compatibility mode
-	String DATABASE_KINGBASE_SQLSERVER = "KINGBASE_SQLSERVER"; // Require the server's SQL Server compatibility mode
+	String DATABASE_KINGBASE_AUTO = "KINGBASE_AUTO"; // Configuration entry: detect the server mode for this data source
+	String DATABASE_KINGBASE = "KINGBASE"; // Legacy behavior without detection; new integrations use KINGBASE_AUTO
+	// Internal dialect / backend expectation identifiers, never @database or DEFAULT_DATABASE values.
+	String DATABASE_KINGBASE_MYSQL = "KINGBASE_MYSQL";
+	String DATABASE_KINGBASE_ORACLE = "KINGBASE_ORACLE";
+	String DATABASE_KINGBASE_SQLSERVER = "KINGBASE_SQLSERVER";
 	String DATABASE_ELASTICSEARCH = "ELASTICSEARCH"; // https://www.elastic.co/guide/en/elasticsearch/reference/7.4/xpack-sql.html
 	String DATABASE_MANTICORE = "MANTICORE"; // https://manticoresearch.com
 	String DATABASE_CLICKHOUSE = "CLICKHOUSE"; // https://clickhouse.com

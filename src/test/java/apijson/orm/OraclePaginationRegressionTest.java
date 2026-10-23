@@ -7,8 +7,8 @@ import static org.junit.Assert.*;
 
 public class OraclePaginationRegressionTest {
 	private Config config(String database, String version) {
-		Config c = new Config(version);
-		c.setDatabase(database);
+		Config c = new Config(version, database);
+		c.setDatabase(database.startsWith("KINGBASE_") ? SQLConfig.DATABASE_KINGBASE_AUTO : database);
 		c.setSchema("test");
 		c.setCount(5);
 		c.setPage(2);
@@ -90,20 +90,21 @@ public class OraclePaginationRegressionTest {
 	private static class Config extends AbstractSQLConfig<Long, Map<String, Object>, List<Object>> {
 		private final String version;
 
-		Config(String version) {
+		private final String dialect;
+        Config(String version, String dialect) {
 			super(RequestMethod.GET, "Sample");
-			this.version = version;
+			this.version = version; this.dialect=dialect;
 		}
 
 		@Override
 		protected Object gainKingbaseModeCacheKey() {
-			return Arrays.asList(getClass(), getDatabase());
+			return Arrays.asList(getClass(), dialect);
 		}
 
 		@Override
 		protected java.sql.Connection openKingbaseModeConnection() throws java.sql.SQLException {
 			KingbaseModeResolverTest.Config stub = new KingbaseModeResolverTest.Config();
-			stub.mode = getDatabase().substring("KINGBASE_".length());
+			stub.mode = dialect.substring("KINGBASE_".length());
 			return stub.openKingbaseModeConnection();
 		}
 
