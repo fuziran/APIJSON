@@ -927,7 +927,9 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 								+ "\n >>>>>>>>>>>>>>>>>>>>>>>>>>> \n\n");
 
 						//TODO 兼容复杂关联
-						cc.putWhere(key, result.get(key), true);  // APP JOIN 应该有且只有一个 ON 条件
+						Object cacheKeyValue = getAppJoinCacheKeyValue(
+								jc, result.get(key), targetValueList);
+						cc.putWhere(key, cacheKeyValue, true);  // APP JOIN 应该有且只有一个 ON 条件
 						String cacheSql = cc.gainSQL(false);
 						List<M> results = childMap.get(cacheSql);
 
@@ -1026,6 +1028,64 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 			return true;
 		}
 		return columnName.startsWith("_");
+	}
+
+	/**
+	 * Kingbase MySQL mode may expose an integral JOIN key through JDBC with a
+	 * different Java representation from the corresponding main-table value
+	 * (for example String/BigDecimal versus Long). APIJSON's APP JOIN cache is
+	 * keyed by generated SQL, so using the returned representation can quote or
+	 * format the value differently and make the following per-row lookup miss
+	 * the batch-prefetched cache. Reuse the semantically equal original target
+	 * value when building that cache key. Other databases keep the original
+	 * behavior, and EXPLAIN never enters APP JOIN result caching.
+	 */
+	protected Object getAppJoinCacheKeyValue(
+			SQLConfig<T, M, L> joinConfig, Object resultValue,
+			List<Object> targetValueList) {
+		if (joinConfig == null || joinConfig.isKingBaseMySQL() == false) {
+			return resultValue;
+		}
+		if (resultValue == null || targetValueList == null) {
+			return resultValue;
+		}
+
+		// Exact identity wins, regardless of the order of numeric-looking strings.
+		for (Object targetValue : targetValueList) {
+			if (Objects.equals(resultValue, targetValue)) {
+				return targetValue;
+			}
+		}
+		for (Object targetValue : targetValueList) {
+			if (isEquivalentKingbaseMySQLAppJoinValue(
+					resultValue, targetValue)) {
+				return targetValue;
+			}
+		}
+		return resultValue;
+	}
+
+	private boolean isEquivalentKingbaseMySQLAppJoinValue(
+			Object left, Object right) {
+		if (Objects.equals(left, right)) {
+			return true;
+		}
+		if (left == null || right == null) {
+			return false;
+		}
+		// Do not infer a VARCHAR key's type from its contents ("01" != "1").
+		// Cross-type text equality is safe; numeric normalization requires Numbers
+		// on both sides, i.e. representations already identified as numeric by JDBC.
+		if (!(left instanceof Number) || !(right instanceof Number)) {
+			return left.toString().equals(right.toString());
+		}
+		try {
+			return new BigDecimal(left.toString()).compareTo(
+					new BigDecimal(right.toString())) == 0;
+		}
+		catch (NumberFormatException e) {
+			return left.toString().equals(right.toString());
+		}
 	}
 
 	/**resultList.put(position, table);
