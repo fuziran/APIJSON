@@ -3297,7 +3297,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 				items[i] = "(";
 				for (int j = 0; j < vs.size(); j++) {
-					items[i] += ((j <= 0 ? "" : ",") + gainValue(vs.get(j)));
+					String inputColumn = isKingBase() && getColumn() != null && j < getColumn().size()
+							? getColumn().get(j) : null;
+					items[i] += ((j <= 0 ? "" : ",") + (isKingBase() ? gainValue(inputColumn, inputColumn, vs.get(j)) : gainValue(vs.get(j))));
 				}
 				items[i] += ")";
 			}
@@ -4428,6 +4430,45 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			throw new IllegalArgumentException(key + ":value 中key不合法！不支持 ! 以外的逻辑符 ！");
 		}
 
+		// KES Oracle/SQL Server JSON has no equality operator. Compare JSONB values
+		// for explicit JSON casts, preserving parameter binding and structural equality.
+		String declaredType = getCast() == null ? null : getCast().get(key);
+		if (value != null && !(value instanceof Subquery) && rawSQL == null
+				&& rc.equals(column) && declaredType != null && "JSON".equalsIgnoreCase(declaredType.trim())
+				&& (isKingBaseOracle() || isKingBaseSQLServer())) {
+			return "cast(" + gainKey(column) + " AS JSONB)" + (not ? " != " : " = ")
+					+ "cast(" + gainValue(key, column, value) + " AS JSONB)";
+		}
+		// XML equality is explicitly textual (serialized XML), not XML canonical equivalence.
+		// Keep XML parameter validation before comparing the serialized values.
+		if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+				&& declaredType != null && "XML".equalsIgnoreCase(declaredType.trim())
+				&& (isKingBaseOracle() || isKingBaseSQLServer())) {
+			return "cast(" + gainKey(column) + " AS TEXT)" + (not ? " != " : " = ")
+					+ "cast(" + gainValue(key, column, value) + " AS TEXT)";
+		}
+		// BFILE equality compares directory/file locators, never file contents.
+		if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+				&& declaredType != null && "BFILE".equalsIgnoreCase(declaredType.trim()) && isKingBaseOracle()) {
+			return "cast(" + gainKey(column) + " AS TEXT)" + (not ? " != " : " = ")
+					+ "cast(" + gainValue(key, column, value) + " AS TEXT)";
+		}
+		// Generated rowversion tokens are compared as canonical hex text. Do not cast
+		// the driver-returned ASCII bytes to BYTEA or reinterpret them as a new token.
+		if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+				&& declaredType != null && "ROWVERSION".equalsIgnoreCase(declaredType.trim()) && isKingBaseSQLServer()) {
+			return "lower(cast(" + gainKey(column) + " AS TEXT))" + (not ? " != " : " = ")
+					+ gainValue(KingbaseTypeSupport.rowversionPredicateInput(value));
+		}
+		// V9R1C10 SQL Server binary equality can match unequal byte sequences.
+		// BYTEA preserves full length/content for explicitly typed binary predicates.
+		if (value != null && !(value instanceof Subquery) && rawSQL == null && rc.equals(column)
+				&& declaredType != null && declaredType.trim().toUpperCase(java.util.Locale.ROOT)
+					.matches("(?:BINARY|VARBINARY)(?:\\s*\\(\\s*[1-9][0-9]*\\s*\\))?")
+				&& isKingBaseSQLServer()) {
+			return "cast(" + gainKey(column) + " AS BYTEA)" + (not ? " != " : " = ")
+					+ "cast(" + gainValue(key, column, value) + " AS BYTEA)";
+		}
 		String logic = value == null && rawSQL == null ? (not ? SQL.IS_NOT : SQL.IS) : (not ? " != " : " = ");
 		return gainKey(column) + logic + (value instanceof Subquery ? gainSubqueryString((Subquery<T, M, L>) value)
 				: (rawSQL != null ? rawSQL : gainValue(key, column, value)));
@@ -4521,7 +4562,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			//				return "cast(?" + SQL.AS + type + ")";
 			//			}
 
-			preparedValueList.add(value);
+			String[] bfile = isKingBase() ? KingbaseTypeSupport.bfileInput(type, value) : null;
+			if (bfile != null) {
+				preparedValueList.add(bfile[0]);
+				preparedValueList.add(bfile[1]);
+				return "bfilename(cast(? AS cstring), cast(? AS cstring))";
+			}
+			Object input = isKingBase() ? KingbaseTypeSupport.castInput(type, value) : value;
+			preparedValueList.add(isKingBaseMySQL() ? KingbaseTypeSupport.mysqlBitInput(type, input) : input);
 			return StringUtil.isEmpty(type, true) ? "?" : "cast(?" + SQL.AS + type + ")";
 		}
 
@@ -5412,7 +5460,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			) : config.gainSQLSchema();
 
 			String q = config.getQuote();
-			return "CALL " + q + sch + q + "." + (hasPrefix ? procedure.substring(ind + 1) : procedure);
+			String call = q + sch + q + "." + (hasPrefix ? procedure.substring(ind + 1) : procedure);
+			return config.isKingBaseOracle() ? "BEGIN " + call + "; END;" : "CALL " + call;
 		}
 
 		String tablePath = config.gainTablePath();
@@ -6354,7 +6403,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			// @null >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 			// @cast <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-			String[] casts = StringUtil.split(cast);
+			String[] casts = config.isKingBase() ? KingbaseTypeSupport.splitCasts(cast) : StringUtil.split(cast);
 			Map<String, String> castMap = null;
 			if (casts != null && casts.length > 0) {
 				castMap = new HashMap<>(casts.length);
@@ -6365,7 +6414,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 						throw new IllegalArgumentException(table + ":{} 里的 @cast: 'key0:type0,key1:type1..' 中 '"
 								+ c +  "' 对应的 key 的字符 '" + p.getKey() + "' 不合法！不允许为空！");
 					}
-					if (StringUtil.isName(p.getValue()) == false) {
+					if ((config.isKingBase() ? KingbaseTypeSupport.validCast(p.getValue()) : StringUtil.isName(p.getValue())) == false) {
 						throw new IllegalArgumentException(table + ":{} 里的 @cast: 'key0:type0,key1:type1..' 中 '"
 								+ c +  "' 对应的 type 的字符 '" + p.getValue() + "' 不合法！必须符合类型名称格式！");
 					}
