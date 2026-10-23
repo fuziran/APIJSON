@@ -35,16 +35,21 @@ public class RequestStructureJsonTest {
         try {
             TestParser parser = new TestParser();
             assertEquals(Boolean.TRUE, parser.getStructure("Request", "GETS", tag, 1).get("enabled"));
+            // Native string-backed rules retain the upstream contract in this adaptation.
+            assertThrows(ClassCastException.class,
+                    () -> new TestParser("MYSQL").getStructure("Request", "GETS", tag, 1));
             Map<String,Object> rule = new LinkedHashMap<>();
             rule.put("enabled", true);
             row.put("structure", rule);
             assertSame(rule, parser.getStructure("Request", "GETS", tag, 1));
+            assertSame(rule, new TestParser("MYSQL").getStructure("Request", "GETS", tag, 1));
         } finally {
             if (previous == null) AbstractVerifier.REQUEST_MAP.remove(key);
             else AbstractVerifier.REQUEST_MAP.put(key, previous);
         }
     }
     static class TestParser extends AbstractParser<Long, Map<String,Object>, List<Object>> {
+        final String database;
         final AbstractSQLExecutor<Long,Map<String,Object>,List<Object>> executor =
             new AbstractSQLExecutor<Long,Map<String,Object>,List<Object>>() {
                 @Override public Map<String,Object> execute(SQLConfig<Long,Map<String,Object>,List<Object>> config, boolean unknown) throws Exception {
@@ -54,18 +59,19 @@ public class RequestStructureJsonTest {
                     return row;
                 }
             };
-        TestParser() { super(RequestMethod.GETS, false); }
+        TestParser() { this(SQLConfig.DATABASE_KINGBASE_ORACLE); }
+        TestParser(String database) { super(RequestMethod.GETS, false); this.database = database; }
         @Override public SQLConfig<Long,Map<String,Object>,List<Object>> createSQLConfig() {
             return new AbstractSQLConfig<Long,Map<String,Object>,List<Object>>(RequestMethod.GET, "Request") {
+                @Override public String gainSQLDatabase() { return database; }
                 @Override public String gainDBVersion() { return "9"; }
                 @Override public String gainDBUri() { return "jdbc:kingbase8://localhost/test"; }
                 @Override public String gainDBAccount() { return "test"; }
                 @Override public String gainDBPassword() { return "test"; }
-                @Override public boolean isKingBaseOracle() { return true; }
-            };
+            }.setDatabase(database);
         }
         @Override public SQLExecutor<Long,Map<String,Object>,List<Object>> createSQLExecutor() { return executor; }
-        @Override public Parser<Long,Map<String,Object>,List<Object>> createParser() { return new TestParser(); }
+        @Override public Parser<Long,Map<String,Object>,List<Object>> createParser() { return new TestParser(database); }
         @Override public Verifier<Long,Map<String,Object>,List<Object>> createVerifier() { return null; }
         @Override public FunctionParser<Long,Map<String,Object>,List<Object>> createFunctionParser() { return null; }
         @Override public Object onFunctionParse(String key,String function,String parentPath,String currentName,Map<String,Object> object,boolean raw) { return null; }

@@ -154,9 +154,9 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void sqlServerOrdersUnpagedLeftJoinAtOuterQueryOnly() throws Exception {
-		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> main = config(SQLConfig.DATABASE_SQLSERVER, "Moment");
-		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> comment = config(SQLConfig.DATABASE_SQLSERVER, "Comment");
+	public void kingbaseSqlServerOrdersUnpagedLeftJoinAtOuterQueryOnly() throws Exception {
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> main = config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Moment");
+		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> comment = config(SQLConfig.DATABASE_KINGBASE_SQLSERVER, "Comment");
 		comment.setOrder("id+");
 		Join<Long, Map<String, Object>, List<Object>> join = new Join<>();
 		join.setJoinType("<");
@@ -265,7 +265,7 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void mapsJsonLengthOnlyForKingbaseMySQL() throws Exception {
+	public void preservesJsonLengthInsteadOfNarrowingToArrayLength() throws Exception {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> kingbaseMySQL =
 				config(SQLConfig.DATABASE_KINGBASE_MYSQL, "Moment");
 		kingbaseMySQL.setColumn(Arrays.asList(
@@ -273,11 +273,11 @@ public class KingbaseCompatibilityTest {
 		String kingbaseSql = kingbaseMySQL.gainSQL(true);
 		assertTrue(kingbaseSql,
 				kingbaseSql.contains(
-						"json_array_length(`pictureList`) AS `pictureCount`"));
-		assertEquals("json_array_length(`pictureList`)>0",
+						"json_length(`pictureList`) AS `pictureCount`"));
+		assertEquals("json_length(`pictureList`)>0",
 				kingbaseMySQL.gainHavingItem("`", "Moment", null, "",
 						"json_length(pictureList)>0", false));
-		assertEquals("json_array_length(`pictureList`)",
+		assertEquals("json_length(`pictureList`)",
 				kingbaseMySQL.gainKey("pictureList{"));
 
 		for (String database : Arrays.asList(
@@ -324,11 +324,11 @@ public class KingbaseCompatibilityTest {
 				jsonLengthHavingConfig(SQLConfig.DATABASE_KINGBASE_MYSQL);
 		String kingbaseSql = kingbaseMySQL.gainSQL(true);
 		assertTrue(kingbaseSql, kingbaseSql.contains(
-				"WHERE  (  (`userId` = ?)  )  AND ((json_array_length(`pictureList`)>0))"));
+				"WHERE  (  (`userId` = ?)  )  AND ((json_length(`pictureList`)>0))"));
 		assertFalse(kingbaseSql, kingbaseSql.contains(" HAVING "));
 		String nativeSqlServer = jsonLengthHavingConfig(SQLConfig.DATABASE_SQLSERVER).gainSQL(true);
-		assertTrue(nativeSqlServer, nativeSqlServer.contains("SELECT COUNT(*) FROM OPENJSON("));
-		assertFalse(nativeSqlServer, nativeSqlServer.contains(" HAVING "));
+		assertFalse(nativeSqlServer, nativeSqlServer.contains("OPENJSON("));
+		assertTrue(nativeSqlServer, nativeSqlServer.contains(" HAVING (json_length("));
 		String kingbaseSqlServer = jsonLengthHavingConfig(SQLConfig.DATABASE_KINGBASE_SQLSERVER).gainSQL(true);
 		assertTrue(kingbaseSqlServer, kingbaseSqlServer.contains("json_length("));
 		assertFalse(kingbaseSqlServer, kingbaseSqlServer.contains(" HAVING "));
@@ -374,7 +374,7 @@ public class KingbaseCompatibilityTest {
 		String sqlServer = config(SQLConfig.DATABASE_KINGBASE_SQLSERVER).gainRegExpString("name", "name", "A.*", true);
 
 		assertFalse(mysql.startsWith("(CASE WHEN"));
-		assertTrue(nativeSQLServer, nativeSQLServer.startsWith("\"name\" COLLATE Latin1_General_100_CI_AS LIKE "));
+		assertTrue(nativeSQLServer, nativeSQLServer.startsWith("\"name\" REGEXP "));
 		assertFalse(nativeSQLServer, nativeSQLServer.contains("REGEXP_LIKE"));
 		assertTrue(kingbaseMySQL.startsWith("(CASE WHEN `name` IS NULL THEN NULL ELSE regexp_like("));
 		assertTrue(kingbaseMySQL.endsWith(" END)"));
@@ -385,8 +385,7 @@ public class KingbaseCompatibilityTest {
 
 	@Test
 	public void sqlServerGroupedPaginationOrdersByGroupedColumn() throws Exception {
-		for (String database : Arrays.asList(SQLConfig.DATABASE_SQLSERVER,
-				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+		for (String database : Arrays.asList(SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
 			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> grouped = config(database, "Comment");
 			grouped.setColumn(Arrays.asList("momentId", "count(userId)"));
 			grouped.setGroup("momentId");
@@ -399,8 +398,7 @@ public class KingbaseCompatibilityTest {
 
 	@Test
 	public void sqlServerSubqueryPaginationUsesProjectedColumn() {
-		for (String database : Arrays.asList(SQLConfig.DATABASE_SQLSERVER,
-				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+		for (String database : Arrays.asList(SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
 			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> source = config(database, "Comment");
 			source.setColumn(Arrays.asList("userId"));
 			Subquery<Long, Map<String, Object>, List<Object>> from = new Subquery<>();
@@ -414,9 +412,9 @@ public class KingbaseCompatibilityTest {
 
 	@Test
 	public void sqlServerPaginationBreaksEqualDateTiesById() {
-		for (String database : Arrays.asList(SQLConfig.DATABASE_SQLSERVER,
-				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+		for (String database : Arrays.asList(SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
 			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config = config(database, "Moment");
+			config.setColumn(Arrays.asList("date", "id"));
 			config.setOrder("date+").setCount(5);
 			String order = config.gainOrderString(true);
 			assertTrue(order, order.contains("\"date\" ASC"));
@@ -436,9 +434,9 @@ public class KingbaseCompatibilityTest {
 
 	@Test
 	public void sqlServerPaginationUsesConfiguredPrimaryKeyWithoutDuplicatingIt() throws Exception {
-		for (String database : Arrays.asList(SQLConfig.DATABASE_SQLSERVER,
-				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+		for (String database : Arrays.asList(SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
 			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config = config(database, "CustomKeyTable", "uuid");
+			config.setColumn(Arrays.asList("date", "uuid"));
 			config.setOrder("date+").setCount(5);
 			assertEquals(" ORDER BY \"date\" ASC ,\"uuid\" ASC ", config.gainOrderString(true));
 			for (String order : Arrays.asList("uuid", "uuid+", "uuid-")) {
@@ -487,17 +485,16 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void translatesLegacyDateFormatForSqlServerModes() throws Exception {
-		for (String database : Arrays.asList(SQLConfig.DATABASE_SQLSERVER,
-				SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+	public void translatesLegacyDateFormatOnlyForKingbaseSqlServer() throws Exception {
+		for (String database : Arrays.asList(SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
 			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config =
 					config(database, "Moment");
-			config.setColumn(Arrays.asList("id", "date_format(date,%Y-%m-%d %H:%m)"));
+			config.setColumn(Arrays.asList("id", "date_format(date,%Y-%m-%d %H:%i)"));
 			String sql = config.gainSQL(true);
 			assertFalse(sql, sql.contains("date_format("));
-			assertTrue(sql, sql.contains(database.equals(SQLConfig.DATABASE_SQLSERVER)
-					? "FORMAT(\"date\", " : "to_char(to_timestamp(CAST(\"date\" AS varchar)"));
-			assertEquals(Arrays.asList("%Y-%m-%d %H:%m"), config.getPreparedValueList());
+			assertTrue(sql, sql.contains("to_char(to_timestamp(CAST(\"date\" AS varchar)"));
+			assertEquals(Arrays.asList("YYYY\"-\"MM\"-\"DD\" \"HH24\":\"MI"),
+					config.getPreparedValueList());
 		}
 	}
 
@@ -664,8 +661,8 @@ public class KingbaseCompatibilityTest {
 	public void generatesModeSpecificJsonContainment() {
 		String nativeSQLServer = config(SQLConfig.DATABASE_SQLSERVER)
 				.gainContainString("get<>", "get", new Object[] {38710}, Logic.TYPE_OR);
-		assertTrue(nativeSQLServer, nativeSQLServer.contains("EXISTS (SELECT 1 FROM OPENJSON(\"get\") AS j WHERE j.[value] = "));
-		assertFalse(nativeSQLServer, nativeSQLServer.contains("JSON_CONTAINS"));
+		assertTrue(nativeSQLServer, nativeSQLServer.contains("json_contains(\"get\","));
+		assertFalse(nativeSQLServer, nativeSQLServer.contains("OPENJSON"));
 		for (String database : new String[] {
 				SQLConfig.DATABASE_KINGBASE_MYSQL,
 				SQLConfig.DATABASE_KINGBASE_SQLSERVER
@@ -683,11 +680,11 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void generatesNativeSqlServerProcedureCall() throws Exception {
+	public void preservesNativeSqlServerProcedureCall() throws Exception {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> sqlServer =
 				config(SQLConfig.DATABASE_SQLSERVER, "User");
 		sqlServer.setProcedure("getCommentByUserId(82001,10,0)");
-		assertEquals("EXEC \"sys\".getCommentByUserId 82001,10,0", sqlServer.gainSQL(false));
+		assertEquals("CALL \"sys\".getCommentByUserId(82001,10,0)", sqlServer.gainSQL(false));
 	}
 
 	@Test
@@ -1292,8 +1289,8 @@ public class KingbaseCompatibilityTest {
             try{KingbaseTypeSupport.rowversionPredicateInput(invalid);org.junit.Assert.fail("Invalid token accepted");}catch(IllegalArgumentException expected){}
         }
     }
- @Test public void oracleProceduresUseAnonymousBlocksForImplicitResults() throws Exception {
-  for(String db: new String[]{SQLConfig.DATABASE_ORACLE,SQLConfig.DATABASE_KINGBASE_ORACLE}) {
+ @Test public void kingbaseOracleProceduresUseAnonymousBlocksForImplicitResults() throws Exception {
+  for(String db: new String[]{SQLConfig.DATABASE_KINGBASE_ORACLE}) {
    AbstractSQLConfig<Long,Map<String,Object>,List<Object>> c=config(db);c.setProcedure("getCommentByUserId(82001,10,0)");
    String sql=c.gainSQL(true);assertTrue(sql,sql.startsWith("BEGIN "));assertTrue(sql,sql.endsWith("; END;"));
   }

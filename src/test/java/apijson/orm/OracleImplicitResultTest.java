@@ -13,18 +13,18 @@ public class OracleImplicitResultTest {
     private final AbstractSQLExecutor<Long, Map<String, Object>, List<Object>> executor =
             new AbstractSQLExecutor<Long, Map<String, Object>, List<Object>>() {};
 
-    @Test public void anonymousBlockReadsItsFirstImplicitResult() throws Exception {
+    @Test public void kingbaseAnonymousBlockReadsItsFirstImplicitResult() throws Exception {
         AtomicBoolean advanced = new AtomicBoolean();
         ResultSet expected = (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[]{ResultSet.class}, (p, m, a) -> null);
         Statement statement = statement(advanced, expected);
-        assertSame(expected, executor.execute(statement, "BEGIN test_comments(); END;"));
+        assertSame(expected, executor.executeKingbase(statement, "BEGIN test_comments(); END;"));
         assertTrue(advanced.get());
     }
 
     @Test public void ordinaryUpdateDoesNotAdvanceAndLoseItsUpdateCount() throws Exception {
         AtomicBoolean advanced = new AtomicBoolean();
-        assertNull(executor.execute(statement(advanced, null), "UPDATE test_table SET n=1"));
+        assertNull(executor.executeKingbase(statement(advanced, null), "UPDATE test_table SET n=1"));
         assertFalse(advanced.get());
     }
 

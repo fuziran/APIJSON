@@ -45,16 +45,15 @@ public class JoinColumnOwnershipTest {
         };
         return e.execute(c,false);
     }
-    @Test public void oracleWildcardMainStaysMainWithoutTableMetadata()throws Exception{
-        Config c=new Config("ORACLE","Comment");c.setJoinList(Arrays.asList(join("ORACLE","User","id","name")));
+    @Test public void kingbaseOracleWildcardMainStaysMainWithoutTableMetadata()throws Exception{
+        Config c=new Config("KINGBASE_ORACLE","Comment");c.setJoinList(Arrays.asList(join("KINGBASE_ORACLE","User","id","name")));
         Map<String,Object> r=run(c,new String[]{"id","userId","content","id","name"},new String[]{"","","","",""},new Object[][]{{1L,7L,"comment",7L,"user"},{2L,8L,"second",8L,"other"}});
         assertEquals(1L,r.get("id"));assertEquals("comment",r.get("content"));
         Map v=(Map)r.get(AbstractSQLExecutor.KEY_VICE_ITEM);assertEquals(7L,((Map)v.get("User")).get("id"));
         List rows=(List)r.get(AbstractSQLExecutor.KEY_RAW_LIST);assertEquals(2L,((Map)rows.get(1)).get("id"));
     }
     @Test public void nullFirstViceRowCannotShiftFollowingWildcardJoin()throws Exception{
-        for(String db:Arrays.asList("ORACLE","KINGBASE_ORACLE","MYSQL","KINGBASE_MYSQL",
-                "SQLSERVER","KINGBASE_SQLSERVER")){
+        for(String db:Arrays.asList("KINGBASE_ORACLE","KINGBASE_MYSQL","KINGBASE_SQLSERVER")){
             Config c=new Config(db,"Moment","id","userId","content");c.setJoinList(Arrays.asList(join(db,"User","id","name"),join(db,"Comment")));
             Map<String,Object> r=run(c,new String[]{"id","userId","content","id","name","id","toId","content"},new String[]{"","","","","","","",""},new Object[][]{{12L,7L,"moment",null,null,162L,0L,"comment"},{15L,8L,"next",8L,"user",164L,0L,"second"}});
             Map v=(Map)r.get(AbstractSQLExecutor.KEY_VICE_ITEM);Map user=(Map)v.get("User"),comment=(Map)v.get("Comment");
@@ -70,8 +69,8 @@ public class JoinColumnOwnershipTest {
         Map user=(Map)((Map)r.get(AbstractSQLExecutor.KEY_VICE_ITEM)).get("User");assertEquals(7L,user.get("uid"));assertFalse(user.containsKey("RN"));
     }
     @Test public void explicitNullColumnDoesNotStealNextTablesId()throws Exception{
-        Config c=new Config("ORACLE","Moment","id","content");
-        c.setJoinList(Arrays.asList(join("ORACLE","User","name"),join("ORACLE","Comment","id","content")));
+        Config c=new Config("KINGBASE_ORACLE","Moment","id","content");
+        c.setJoinList(Arrays.asList(join("KINGBASE_ORACLE","User","name"),join("KINGBASE_ORACLE","Comment","id","content")));
         Map<String,Object> r=run(c,new String[]{"id","content","name","id","content"},new String[]{"","","","",""},new Object[][]{{12L,"moment",null,162L,"comment"}});
         Map v=(Map)r.get(AbstractSQLExecutor.KEY_VICE_ITEM);assertTrue(((Map)v.get("User")).isEmpty());assertEquals(162L,((Map)v.get("Comment")).get("id"));
     }

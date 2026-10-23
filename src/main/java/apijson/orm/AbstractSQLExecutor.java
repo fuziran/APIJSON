@@ -156,6 +156,13 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	}
 	@Override
 	public ResultSet execute(@NotNull Statement statement, String sql) throws Exception {
+		statement.execute(sql);
+		ResultSet rs = statement.getResultSet();
+		return rs;
+	}
+
+	/** Kingbase-specific prepared execution and implicit-result handling. */
+	protected ResultSet executeKingbase(@NotNull Statement statement, String sql) throws Exception {
         boolean hasResult = statement instanceof PreparedStatement
                 ? ((PreparedStatement) statement).execute() : statement.execute(sql);
         // Oracle throws ORA-17283 if getResultSet is called before advancing past
@@ -217,7 +224,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 					executedSQLStartTime = System.currentTimeMillis();
 				}
 				Statement statement = getStatement(config);
-				rs = execute(statement, sql);
+				rs = config.isKingBase() ? executeKingbase(statement, sql) : execute(statement, sql);
 				int updateCount = statement.getUpdateCount();
 				if (isExplain == false) {
 					executedSQLDuration += System.currentTimeMillis() - executedSQLStartTime;
@@ -979,10 +986,9 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 
 
 
-    /** Infer unambiguous SELECT boundaries without relying on first-row values or JDBC table names. */
+    /** Infer Kingbase SELECT boundaries without relying on first-row values or JDBC table names. */
     protected Join[] resolveProjectionJoins(SQLConfig<T, M, L> config, ResultSetMetaData md) throws SQLException {
-        if (!(config.isOracle() || config.isKingBaseOracle() || config.isMySQL() || config.isKingBaseMySQL()
-                || config.isSQLServer() || config.isKingBaseSQLServer()) || config.isExplain()
+        if (!(config.isKingBaseOracle() || config.isKingBaseMySQL() || config.isKingBaseSQLServer()) || config.isExplain()
                 || RequestMethod.isHeadMethod(config.getMethod(), true)) return null;
         List<Join<T, M, L>> owners = new ArrayList<>();
         List<Integer> widths = new ArrayList<>();
@@ -995,9 +1001,6 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
             owners.add(join); widths.add(projectionWidth(projected));
         }
         int length = md.getColumnCount(), dataLength = length;
-        // Native legacy pagination also appends RN, but is outside this mapping contract.
-        if (config.isOracle() && config.getCount() > 0 && length > 0
-                && "RN".equalsIgnoreCase(md.getColumnName(length))) return null;
         if (config.isKingBaseOracle() && config.getCount() > 0 && length > 0
                 && "RN".equalsIgnoreCase(md.getColumnName(length))) dataLength--;
         int known = 0, wildcard = -1;
@@ -1126,6 +1129,12 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 			return resultValue;
 		}
 
+		// Exact identity wins, regardless of the order of numeric-looking strings.
+		for (Object targetValue : targetValueList) {
+			if (Objects.equals(resultValue, targetValue)) {
+				return targetValue;
+			}
+		}
 		for (Object targetValue : targetValueList) {
 			if (isEquivalentKingbaseMySQLAppJoinValue(
 					resultValue, targetValue)) {
@@ -1143,7 +1152,12 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		if (left == null || right == null) {
 			return false;
 		}
-
+		// Do not infer a VARCHAR key's type from its contents ("01" != "1").
+		// Cross-type text equality is safe; numeric normalization requires Numbers
+		// on both sides, i.e. representations already identified as numeric by JDBC.
+		if (!(left instanceof Number) || !(right instanceof Number)) {
+			return left.toString().equals(right.toString());
+		}
 		try {
 			return new BigDecimal(left.toString()).compareTo(
 					new BigDecimal(right.toString())) == 0;
@@ -1202,6 +1216,10 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 			, Map<String, M> childMap, Map<String, String> keyMap) throws Exception {
 
 		long startTime = System.currentTimeMillis();
+        boolean kingbase = config.isKingBaseMySQL() || config.isKingBaseOracle() || config.isKingBaseSQLServer();
+        // Only Kingbase needs type metadata before reading precise TIME values.
+        Object value = kingbase ? null : rs.getObject(columnIndex);
+        if (!kingbase) sqlResultDuration += System.currentTimeMillis() - startTime;
 
 
 		//					Log.d(TAG, "name:" + rsmd.getColumnName(i));
@@ -1225,10 +1243,11 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		}
         // Read TIME directly as text: getObject() may already lose fractional seconds
         // or reject a MySQL duration outside the java.sql.Time clock-time range.
-        boolean preciseTime = (config.isKingBaseMySQL() || config.isKingBaseOracle() || config.isKingBaseSQLServer())
-                && (jdbcType == Types.TIME || jdbcType == Types.TIME_WITH_TIMEZONE);
-        Object value = preciseTime ? rs.getString(columnIndex) : rs.getObject(columnIndex);
-        sqlResultDuration += System.currentTimeMillis() - startTime;
+        boolean preciseTime = jdbcType == Types.TIME || jdbcType == Types.TIME_WITH_TIMEZONE;
+        if (kingbase) {
+            value = preciseTime ? rs.getString(columnIndex) : rs.getObject(columnIndex);
+            sqlResultDuration += System.currentTimeMillis() - startTime;
+        }
 		return mapResultValue(config, value, jdbcType, typeName, label);
 	}
 

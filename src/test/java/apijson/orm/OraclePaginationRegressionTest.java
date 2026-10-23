@@ -13,15 +13,16 @@ public class OraclePaginationRegressionTest {
     }
 
     @Test
-    public void modernOraclePreservesJoinProjectionWithoutSyntheticColumns() throws Exception {
+    public void nativeOracleKeepsLegacyPaginationAcrossVersions() throws Exception {
         String query = "SELECT a.*, b.* FROM a JOIN b ON a.id=b.id ORDER BY a.id";
         for (String version : Arrays.asList("12.2", "19.0", "23.26.3.0.0", "26.0")) {
             Config c = config("ORACLE", version);
-            assertEquals(query + " OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY", c.page(query));
+            assertTrue(c.page(query).contains("ROWNUM \"RN\""));
+            assertTrue(c.page(query).endsWith("WHERE \"RN\" > 10"));
             c.putWhere("id", 7L, false);
             String sql = c.gainSQL(true);
-            assertTrue(sql, sql.endsWith(" OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"));
-            assertFalse(sql, sql.contains("ROWNUM"));
+            assertTrue(sql, sql.contains("ROWNUM"));
+            assertFalse(sql, sql.contains("FETCH NEXT"));
             assertEquals(Arrays.asList(7L), c.getPreparedValueList());
         }
     }
