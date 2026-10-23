@@ -82,6 +82,18 @@ public class KingbaseCompatibilityTest {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config =
 				new AbstractSQLConfig<Long, Map<String, Object>, List<Object>>(RequestMethod.GET, "User") {
 					@Override
+					protected Object gainKingbaseModeCacheKey() {
+						return Arrays.asList(getClass(), getDatabase());
+					}
+
+					@Override
+					protected Connection openKingbaseModeConnection() throws SQLException {
+						KingbaseModeResolverTest.Config stub = new KingbaseModeResolverTest.Config();
+						stub.mode = getDatabase().substring("KINGBASE_".length());
+						return stub.openKingbaseModeConnection();
+					}
+
+					@Override
 					public String gainDBVersion() {
 						return "9.0.0";
 					}

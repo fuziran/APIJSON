@@ -157,6 +157,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		DATABASE_LIST.add(DATABASE_COCKROACHDB);
 		DATABASE_LIST.add(DATABASE_DAMENG);
 		DATABASE_LIST.add(DATABASE_KINGBASE);
+		DATABASE_LIST.add(DATABASE_KINGBASE_AUTO);
 		DATABASE_LIST.add(DATABASE_KINGBASE_MYSQL);
 		DATABASE_LIST.add(DATABASE_KINGBASE_ORACLE);
 		DATABASE_LIST.add(DATABASE_KINGBASE_SQLSERVER);
@@ -1090,12 +1091,47 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		return this;
 	}
 	/**
-	 * @return db == null ? DEFAULT_DATABASE : db
+	 * @return the SQL dialect, detecting Kingbase compatibility on first use and
+	 *         rejecting a mismatch when a specific Kingbase mode was configured
 	 */
 	@NotNull
 	public String gainSQLDatabase() {
 		String db = getDatabase();
-		return db == null ? DEFAULT_DATABASE : db;  // "" 表示已设置，不需要用全局默认的 StringUtil.isEmpty(db, false)) {
+		db = db == null ? DEFAULT_DATABASE : db;
+		if (!KingbaseModeResolver.requiresDetection(db)) {
+			return db;
+		}
+		String actual = KINGBASE_MODE_RESOLVER.resolve(this);
+		// An explicit mode is a contract with the caller, not just a routing label.
+		// Validate after resolution so a shared cache cannot bypass this contract.
+		if (!DATABASE_KINGBASE_AUTO.equals(db)) {
+			KingbaseModeResolver.requireExpectedMode(actual, db);
+		}
+		// Backend expectations are checked for every caller, including cache hits.
+		return KingbaseModeResolver.requireExpectedMode(actual, gainKingbaseExpectedDatabase());
+	}
+
+	/** Shared successful detections; clear after replacing a data source's target. */
+	public static final KingbaseModeResolver KINGBASE_MODE_RESOLVER = new KingbaseModeResolver();
+
+	/** Optional backend-only assertion. Null accepts any supported detected mode.
+	 * Override using deployment configuration, never request-controlled values. */
+	protected String gainKingbaseExpectedDatabase() {
+		return null;
+	}
+
+	/**
+	 * Borrow a dedicated detection connection. It is closed (returned to its pool)
+	 * by the resolver. Override for application-managed DataSources. This method
+	 * and the cache key must not depend on an already resolved SQL dialect.
+	 */
+	protected java.sql.Connection openKingbaseModeConnection() throws java.sql.SQLException {
+		return java.sql.DriverManager.getConnection(gainDBUri(), gainDBAccount(), gainDBPassword());
+	}
+
+	/** Override when routing uses additional application context. Never include passwords. */
+	protected Object gainKingbaseModeCacheKey() {
+		return Arrays.asList(getClass(), gainDBUri(), gainDBAccount(), getDatasource(), getNamespace(), getCatalog());
 	}
 
 	@Override
@@ -1185,10 +1221,11 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 	@Override
 	public boolean isKingBase() {
-		return isKingBase(gainSQLDatabase());
+		String db = getDatabase();
+		return isKingBase(db == null ? DEFAULT_DATABASE : db);
 	}
 	public static boolean isKingBase(String db) {
-		return KingbaseSQLDialect.from(db).isKingbase();
+		return DATABASE_KINGBASE_AUTO.equals(db) || KingbaseSQLDialect.from(db).isKingbase();
 	}
 
 	@Override
