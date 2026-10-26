@@ -1106,8 +1106,8 @@ public abstract class AbstractParser<T, M extends Map<String, Object>, L extends
 			config.setParser(this);
 			config.setPrepared(false);
 			config.setColumn(Arrays.asList("structure"));
-			// Kingbase may store configuration JSON in TEXT/CLOB columns.
-			if (config.isKingBase()) config.setJson(Arrays.asList("structure"));
+			// Only the three compatibility modes opt into TEXT/CLOB-backed rules.
+			if (config.isKingBaseCompatibilityMode()) config.setJson(Arrays.asList("structure"));
 
 			Map<String, Object> where = new HashMap<String, Object>();
 			where.put("method", method);
@@ -1128,9 +1128,9 @@ public abstract class AbstractParser<T, M extends Map<String, Object>, L extends
 			//			AbstractVerifier.REQUEST_MAP.put(cacheKey, versionedMap);
 		}
 
-		// Only Kingbase opts into decoding TEXT/CLOB-backed cached rules.
+		// Legacy KINGBASE and native databases keep the original cached-rule contract.
 		Object structure = result == null ? null : result.get("structure");
-		return structure instanceof String && createSQLConfig().isKingBase()
+		return structure instanceof String && createSQLConfig().isKingBaseCompatibilityMode()
 				? JSON.parseObject(structure) : (M) structure;
 	}
 
