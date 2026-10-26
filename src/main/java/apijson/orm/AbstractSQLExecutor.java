@@ -224,7 +224,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 					executedSQLStartTime = System.currentTimeMillis();
 				}
 				Statement statement = getStatement(config);
-				rs = config.isKingBase() ? executeKingbase(statement, sql) : execute(statement, sql);
+				rs = config.isKingBaseCompatibilityMode() ? executeKingbase(statement, sql) : execute(statement, sql);
 				int updateCount = statement.getUpdateCount();
 				if (isExplain == false) {
 					executedSQLDuration += System.currentTimeMillis() - executedSQLStartTime;

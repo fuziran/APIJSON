@@ -100,6 +100,15 @@ public interface SQLConfig<T, M extends Map<String, Object>, L extends List<Obje
 	boolean isCockroachDB();
 	boolean isDameng();
 	boolean isKingBase();
+	/** Three-mode adaptation only; legacy KINGBASE keeps its existing behavior.
+	 * AUTO and legacy routes can be classified before opening a detection connection. */
+	default boolean isKingBaseCompatibilityMode() {
+		String database = getDatabase();
+		if (database == null) database = AbstractSQLConfig.DEFAULT_DATABASE;
+		return !DATABASE_KINGBASE.equals(database)
+				&& (DATABASE_KINGBASE_AUTO.equals(database)
+						|| isKingBaseMySQL() || isKingBaseOracle() || isKingBaseSQLServer());
+	}
 	boolean isKingBaseMySQL();
 	boolean isKingBaseOracle();
 	boolean isKingBaseSQLServer();

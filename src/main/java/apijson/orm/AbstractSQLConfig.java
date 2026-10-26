@@ -889,7 +889,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	@NotNull
 	@Override
 	public String getIdKey() {
-		return isKingBase() ? getMetadataIdKey(getTable()) : KEY_ID;
+		return isKingBaseCompatibilityMode() ? getMetadataIdKey(getTable()) : KEY_ID;
 	}
 
 	private static String getMetadataIdKey(String table) {
@@ -1908,7 +1908,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// MATCH(...) AGAINST(...) is a two-part full-text expression. Passing only
 		// the substring beginning with '(' drops the MATCH function name, which
 		// prevents database-specific full-text conversion from recognizing it.
-		if (isKingBase() && expression.indexOf(")AGAINST(") > start) {
+		if (isKingBaseCompatibilityMode() && expression.indexOf(")AGAINST(") > start) {
 			return parseSQLExpression(KEY_HAVING, expression, containRaw, false, null);
 		}
 		return gainSQLFunction(method) + parseSQLExpression(KEY_HAVING, expression.substring(start), containRaw, false, null);
@@ -2347,9 +2347,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				}
 
 				SQLConfig<T, M, L> ocfg = join.getOnConfig();
-				// Only Kingbase inherits the vice-table order when ON does not declare one.
-				// Preserve the native distinction between derived-table and outer ordering.
-				SQLConfig<T, M, L> cfg = isKingBase()
+				// Only the detected Kingbase modes inherit the vice-table order here.
+				// Native databases and legacy KINGBASE retain the original ordering rules.
+				SQLConfig<T, M, L> cfg = isKingBaseCompatibilityMode()
 						? (ocfg != null && StringUtil.isNotEmpty(ocfg.getOrder(), true) ? ocfg : join.getJoinConfig())
 						: ((ocfg != null && ocfg.getOrder() != null) || join.isLeftOrRightJoin() ? ocfg : join.getJoinConfig());
 
@@ -2930,7 +2930,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				String origin = gainSQLFunctionExpression(fun, ckeys, distinct, suffix);
 				String responseAlias = gainKingbaseMySQLAggregateResponseAlias(key, fun, origin, suffix, alias, allowAlias);
 				expression = origin + (StringUtil.isEmpty(responseAlias, true)
-						? "" : gainAs() + quote + (isKingBase() ? responseAlias.replace(quote, quote + quote) : responseAlias) + quote);
+						? "" : gainAs() + quote + (isKingBaseCompatibilityMode() ? responseAlias.replace(quote, quote + quote) : responseAlias) + quote);
 			}
 			else {
 				//是窗口函数   fun(arg0,agr1) OVER (agr0 agr1 ...)
@@ -3301,9 +3301,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 				items[i] = "(";
 				for (int j = 0; j < vs.size(); j++) {
-					String inputColumn = isKingBase() && getColumn() != null && j < getColumn().size()
+					String inputColumn = isKingBaseCompatibilityMode() && getColumn() != null && j < getColumn().size()
 							? getColumn().get(j) : null;
-					items[i] += ((j <= 0 ? "" : ",") + (isKingBase() ? gainValue(inputColumn, inputColumn, vs.get(j)) : gainValue(vs.get(j))));
+					items[i] += ((j <= 0 ? "" : ",") + (isKingBaseCompatibilityMode() ? gainValue(inputColumn, inputColumn, vs.get(j)) : gainValue(vs.get(j))));
 				}
 				items[i] += ")";
 			}
@@ -4566,13 +4566,13 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			//				return "cast(?" + SQL.AS + type + ")";
 			//			}
 
-			String[] bfile = isKingBase() ? KingbaseTypeSupport.bfileInput(type, value) : null;
+			String[] bfile = isKingBaseCompatibilityMode() ? KingbaseTypeSupport.bfileInput(type, value) : null;
 			if (bfile != null) {
 				preparedValueList.add(bfile[0]);
 				preparedValueList.add(bfile[1]);
 				return "bfilename(cast(? AS cstring), cast(? AS cstring))";
 			}
-			Object input = isKingBase() ? KingbaseTypeSupport.castInput(type, value) : value;
+			Object input = isKingBaseCompatibilityMode() ? KingbaseTypeSupport.castInput(type, value) : value;
 			preparedValueList.add(isKingBaseMySQL() ? KingbaseTypeSupport.mysqlBitInput(type, input) : input);
 			return StringUtil.isEmpty(type, true) ? "?" : "cast(?" + SQL.AS + type + ")";
 		}
@@ -6407,7 +6407,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			// @null >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 			// @cast <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-			String[] casts = config.isKingBase() ? KingbaseTypeSupport.splitCasts(cast) : StringUtil.split(cast);
+			String[] casts = config.isKingBaseCompatibilityMode() ? KingbaseTypeSupport.splitCasts(cast) : StringUtil.split(cast);
 			Map<String, String> castMap = null;
 			if (casts != null && casts.length > 0) {
 				castMap = new HashMap<>(casts.length);
@@ -6418,7 +6418,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 						throw new IllegalArgumentException(table + ":{} 里的 @cast: 'key0:type0,key1:type1..' 中 '"
 								+ c +  "' 对应的 key 的字符 '" + p.getKey() + "' 不合法！不允许为空！");
 					}
-					if ((config.isKingBase() ? KingbaseTypeSupport.validCast(p.getValue()) : StringUtil.isName(p.getValue())) == false) {
+					if ((config.isKingBaseCompatibilityMode() ? KingbaseTypeSupport.validCast(p.getValue()) : StringUtil.isName(p.getValue())) == false) {
 						throw new IllegalArgumentException(table + ":{} 里的 @cast: 'key0:type0,key1:type1..' 中 '"
 								+ c +  "' 对应的 type 的字符 '" + p.getValue() + "' 不合法！必须符合类型名称格式！");
 					}
@@ -7353,7 +7353,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 		@Override
 		public String getIdKey(String database, String datasource, String namespace, String catalog, String schema, String table) {
-			return isKingBase(database == null ? DEFAULT_DATABASE : database) ? getMetadataIdKey(table) : KEY_ID;
+			String db = database == null ? DEFAULT_DATABASE : database;
+			// Callbacks can receive an already resolved internal mode, but never adapt legacy KINGBASE.
+			return isKingBase(db) && !DATABASE_KINGBASE.equals(db)
+					? getMetadataIdKey(table) : KEY_ID;
 		}
 
 		@Override
