@@ -892,7 +892,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		return isKingBaseCompatibilityMode() ? getMetadataIdKey(getTable()) : KEY_ID;
 	}
 
-	private static String getMetadataIdKey(String table) {
+	protected static String getMetadataIdKey(String table) {
 		if (Table.TAG.equals(table)) {
 			return "table_name";
 		}
@@ -974,13 +974,27 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	private boolean test; //测试
 
 	private String procedure;
+	private KingbaseProcedureCall kingbaseProcedureCall;
 
 	public AbstractSQLConfig<T, M, L> setProcedure(String procedure) {
+		if (kingbaseProcedureCall != null) setPreparedValueList(new ArrayList<>());
+		kingbaseProcedureCall = null;
 		this.procedure = procedure;
 		return this;
 	}
+	@Override
 	public String getProcedure() {
 		return procedure;
+	}
+	@Override
+	public AbstractSQLConfig<T, M, L> setProcedure(String name, List<Object> arguments) {
+		if (!isKingBaseCompatibilityMode()) {
+			throw new UnsupportedOperationException("Parameterized procedures are limited to Kingbase compatibility modes");
+		}
+		kingbaseProcedureCall = new KingbaseProcedureCall(name, arguments);
+		procedure = kingbaseProcedureCall.invocation();
+		setPrepared(true);
+		return this;
 	}
 
 	public AbstractSQLConfig(RequestMethod method) {
@@ -1128,7 +1142,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
     /** Resolve a configured route, including routes supplied by framework configuration stores. */
     protected String resolveSQLDatabase(String db) {
 		db = db == null ? DEFAULT_DATABASE : db;
-        validateConfiguredDatabase(db);
+		if (DATABASE_KINGBASE_AUTO.equals(db)
+				|| (KingbaseSQLDialect.from(db).isKingbase() && !DATABASE_KINGBASE.equals(db))) {
+			validateConfiguredDatabase(db);
+		}
 		if (!KingbaseModeResolver.requiresDetection(db)) {
 			return db;
 		}
@@ -1247,11 +1264,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 	@Override
 	public boolean isKingBase() {
-		String db = getDatabase();
-		return isKingBase(db == null ? DEFAULT_DATABASE : db);
+		return isKingBase(gainSQLDatabase());
 	}
 	public static boolean isKingBase(String db) {
-		return DATABASE_KINGBASE_AUTO.equals(db) || KingbaseSQLDialect.from(db).isKingbase();
+		return DATABASE_KINGBASE.equals(db);
 	}
 
 	@Override
@@ -1493,7 +1509,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			return "";
 		}
 		KingbaseSQLDialect kingbaseDialect = KingbaseSQLDialect.from(gainSQLDatabase());
-		if (kingbaseDialect.isKingbase()) {
+		if (kingbaseDialect.isKingbase() && kingbaseDialect != KingbaseSQLDialect.LEGACY) {
 			return kingbaseDialect.getIdentifierQuote();
 		}
 		return isMySQL() || isMariaDB() || isTiDB() || isClickHouse() || isTDengine() || isMilvus() || isDoris() || isStarRocks() ? "`" : "\"";
@@ -3516,7 +3532,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		}
 
 		boolean isOracle = isOracle();
-		return gainLimitString(page, count, isTSQL(), isOracle || isDameng() || isKingBaseOracle(), isPresto() || isTrino());
+		return gainLimitString(page, count, isTSQL(), isOracle || isDameng()
+				|| isKingBase() || isKingBaseOracle(), isPresto() || isTrino());
 	}
 	/**获取限制数量及偏移量
 	* @param page
@@ -4802,8 +4819,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			// condition does not turn a NULL source value into a positive match.
 			return "(CASE WHEN " + target + " IS NULL THEN NULL ELSE " + regexp + " END)";
 		}
-		if (isOracle() || isDameng() || DATABASE_KINGBASE.equals(gainSQLDatabase())
-				|| isKingBaseOracle() || (isMySQL() && gainDBVersionNums()[0] >= 8)) {
+		if (isOracle() || isDameng() || isKingBase() || (isMySQL() && gainDBVersionNums()[0] >= 8)) {
 			return "regexp_like(" + gainKey(column) + ", " + gainValue(key, column, value) + (ignoreCase ? ", 'i'" : ", 'c'") + ")";
 		}
 		if (isPresto() || isTrino()) {
@@ -5122,10 +5138,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					condition += (gainKey(column) + " @> " + gainValue(key, column, newJSONArray(c)));
 					// operator does not exist: jsonb @> character varying  "[" + c + "]");
 				}
-				else if (isKingBase() && isKingBaseOracle() == false) {
+				else if (isKingBaseMySQL() || isKingBaseSQLServer()) {
 					condition += (gainKey(column) + "::jsonb @> " + gainValue(key, column, newJSONArray(c)) + "::jsonb");
 				}
-					else if (isOracle() || isDameng() || isKingBaseOracle()) {
+				else if (isOracle() || isDameng() || isKingBase() || isKingBaseOracle()) {
 					condition += ("json_textcontains(" + gainKey(column) + ", " + (StringUtil.isEmpty(path, true)
 							? "'$'" : gainValue(key, column, path)) + ", " + gainValue(key, column, c == null ? null : c.toString()) + ")");
 				}
@@ -5455,6 +5471,13 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// for (...) { Call procedure1();\n SQL \n; Call procedure2(); ... }
 		// 貌似不需要，因为 ObjectParser<T, M, L> 里就已经处理的顺序等，只是这里要解决下 Schema 问题。
 		String table = config.getTable();
+		if (config.kingbaseProcedureCall != null) {
+			if (!config.isKingBaseCompatibilityMode()) {
+				throw new IllegalStateException("A parameterized Kingbase procedure cannot change database dialect");
+			}
+			config.setPreparedValueList(new ArrayList<>(config.kingbaseProcedureCall.getArguments()));
+			return config.kingbaseProcedureCall.sql(config);
+		}
 		String procedure = config.getProcedure();
 		if (StringUtil.isNotEmpty(procedure, true)) {
 			int ind = procedure.indexOf(".");
@@ -5641,10 +5664,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 	public String gainSelectSQL() throws Exception {
 		KingbaseSQLDialect kingbaseDialect = KingbaseSQLDialect.from(gainSQLDatabase());
-		String kingbaseExplain = kingbaseDialect.getExplainPrefix();
+		String kingbaseExplain = isKingBaseCompatibilityMode() ? kingbaseDialect.getExplainPrefix() : null;
 		String explain = isExplain() ? (kingbaseExplain != null ? kingbaseExplain
 				: (isSQLServer() ? "SET STATISTICS PROFILE ON  "
-				: (isOracle() || isDameng() ? "EXPLAIN PLAN FOR " : "EXPLAIN "))) : "";
+				: (isOracle() || isDameng() || isKingBase() ? "EXPLAIN PLAN FOR " : "EXPLAIN "))) : "";
 		if (isTest() && RequestMethod.isGetMethod(getMethod(), true)) {  // FIXME 为啥是 code 而不是 count ？
 			String q = getQuote();  // 生成 SELECT  (  (24 >=0 AND 24 <3)  )  AS `code` LIMIT 1 OFFSET 0
 			return explain + "SELECT " + gainWhereString(false)
@@ -5655,7 +5678,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 		String tablePath = gainTablePath();
 		String column = gainColumnString();
-		if (isOracle() || isDameng() || isKingBaseOracle()) {
+		if (isOracle() || isDameng() || isKingBase() || isKingBaseOracle()) {
 			//When config's database is oracle,Using subquery since Oracle12 below does not support OFFSET FETCH paging syntax.
 			//针对oracle分组后条数的统计
 			if (StringUtil.isNotEmpty(getGroup(),true) && RequestMethod.isHeadMethod(getMethod(), true)){
@@ -6050,8 +6073,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 						else if (isKingBaseSQLServer()) {
 							sql += (first ? ON : AND) + lk + (isNot ? NOT : "") + " ~" + (ignoreCase ? "* " : " ") + rk;
 						}
-						else if (isOracle() || isDameng() || DATABASE_KINGBASE.equals(gainSQLDatabase())
-								|| isKingBaseOracle() || isKingBaseMySQL()) {
+						else if (isOracle() || isDameng() || isKingBase()
+								|| isKingBaseMySQL() || isKingBaseOracle()) {
 							sql += (first ? ON : AND) + "regexp_like(" +  lk + ", " + rk + (ignoreCase ? ", 'i'" : ", 'c'") + ")";
 						}
 						else if (isPresto() || isTrino()) {
@@ -6107,11 +6130,11 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 							sql += (first ? ON : AND) + (isNot ? "( " : "") + gainCondition(isNot, arrKeyPath
 									+ " IS NOT NULL AND " + arrKeyPath + " @> " + itemKeyPath) + (isNot ? ") " : "");
 						}
-						else if (isKingBase() && isKingBaseOracle() == false) {
+						else if (isKingBaseMySQL() || isKingBaseSQLServer()) {
 							sql += (first ? ON : AND) + (isNot ? "( " : "") + gainCondition(isNot, arrKeyPath
 									+ " IS NOT NULL AND " + arrKeyPath + "::jsonb @> " + itemKeyPath + "::jsonb") + (isNot ? ") " : "");
 						}
-						else if (isOracle() || isDameng() || isKingBaseOracle()) {
+						else if (isOracle() || isDameng() || isKingBase() || isKingBaseOracle()) {
 							sql += (first ? ON : AND) + (isNot ? "( " : "") + gainCondition(isNot, arrKeyPath
 									+ " IS NOT NULL AND json_textcontains(" + arrKeyPath
 									+ ", '$', " + itemKeyPath + ")") + (isNot ? ") " : "");
@@ -6216,6 +6239,11 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// 对 id, id{}, userId, userId{} 处理，这些只要不为 null 就一定会作为 AND 条件 <<<<<<<<<<<<<<<<<<<<<<<<<
 
 		String idKey = callback.getIdKey(database, datasource, namespace, catalog, schema, table);
+		// Resolve metadata defaults using this request's actual route, while
+		// retaining native and explicitly customized callback keys.
+		if (KEY_ID.equals(idKey) && config.isKingBaseCompatibilityMode()) {
+			idKey = config.getIdKey();
+		}
 		String idInKey = idKey + "{}";
 		String userIdKey = callback.getUserIdKey(database, datasource, namespace, catalog, schema, table);
 		String userIdInKey = userIdKey + "{}";
@@ -7353,9 +7381,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 		@Override
 		public String getIdKey(String database, String datasource, String namespace, String catalog, String schema, String table) {
-			String db = database == null ? DEFAULT_DATABASE : database;
-			// Callbacks can receive an already resolved internal mode, but never adapt legacy KINGBASE.
-			return isKingBase(db) && !DATABASE_KINGBASE.equals(db)
+			// An unresolved AUTO/default value cannot identify this callback's route.
+			KingbaseSQLDialect dialect = KingbaseSQLDialect.from(database);
+			return dialect.isKingbase() && dialect != KingbaseSQLDialect.LEGACY
 					? getMetadataIdKey(table) : KEY_ID;
 		}
 

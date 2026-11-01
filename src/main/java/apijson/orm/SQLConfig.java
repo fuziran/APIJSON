@@ -99,19 +99,16 @@ public interface SQLConfig<T, M extends Map<String, Object>, L extends List<Obje
 	boolean isTiDB();
 	boolean isCockroachDB();
 	boolean isDameng();
+	/** Original KINGBASE identifier; the three compatibility modes have separate predicates. */
 	boolean isKingBase();
-	/** Three-mode adaptation only; legacy KINGBASE keeps its existing behavior.
-	 * AUTO and legacy routes can be classified before opening a detection connection. */
+	/** Only resolved Kingbase compatibility modes enable the adaptation. */
 	default boolean isKingBaseCompatibilityMode() {
-		String database = getDatabase();
-		if (database == null) database = AbstractSQLConfig.DEFAULT_DATABASE;
-		return !DATABASE_KINGBASE.equals(database)
-				&& (DATABASE_KINGBASE_AUTO.equals(database)
-						|| isKingBaseMySQL() || isKingBaseOracle() || isKingBaseSQLServer());
+		return isKingBaseMySQL() || isKingBaseOracle() || isKingBaseSQLServer();
 	}
-	boolean isKingBaseMySQL();
-	boolean isKingBaseOracle();
-	boolean isKingBaseSQLServer();
+	// Existing native SQLConfig implementations predate the three-mode extension.
+	default boolean isKingBaseMySQL() { return false; }
+	default boolean isKingBaseOracle() { return false; }
+	default boolean isKingBaseSQLServer() { return false; }
 	boolean isElasticsearch();
 	boolean isManticore();
 	boolean isClickHouse();
@@ -439,6 +436,12 @@ public interface SQLConfig<T, M extends Map<String, Object>, L extends List<Obje
 	String gainSubqueryString(Subquery<T, M, L> subquery) throws Exception;
 
 	SQLConfig<T, M, L> setProcedure(String procedure);
+	/** Existing implementations may keep their original procedure representation. */
+	default String getProcedure() { return null; }
+	/** Parameterized Kingbase IN call; the name contains no argument expression. */
+	default SQLConfig<T, M, L> setProcedure(String name, List<Object> arguments) {
+		throw new UnsupportedOperationException("Parameterized procedures require SQLConfig support");
+	}
 
 
 	List<Object> getWithAsExprPreparedValueList();
