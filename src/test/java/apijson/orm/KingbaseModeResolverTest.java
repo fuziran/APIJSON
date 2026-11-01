@@ -157,14 +157,32 @@ public class KingbaseModeResolverTest {
 	}
 
 	@Test
-	public void autoIsRecognizedWithoutOpeningConnection() {
+	public void autoClassificationDetectsOnceAndUsesTheCachedMode() {
 		Config c = new Config();
 		c.setDatabase("KINGBASE_AUTO");
-		c.fail = true;
-		assertTrue(c.isKingBase());
-		assertEquals(0, c.opened.get());
+		assertFalse(c.isKingBase());
+		assertTrue(c.isKingBaseCompatibilityMode());
+		assertTrue(c.isKingBaseMySQL());
+		assertEquals("KINGBASE_MYSQL", c.gainSQLDatabase());
+		assertEquals(1, c.opened.get());
+		assertEquals(1, c.closed.get());
+		assertEquals(1, c.statementsClosed.get());
+		assertEquals(1, c.resultsClosed.get());
+		assertEquals("KINGBASE_AUTO", c.getDatabase());
 		assertTrue(AbstractSQLConfig.DATABASE_LIST.contains("KINGBASE_AUTO"));
-		assertThrows(IllegalStateException.class, c::gainSQLDatabase);
+	}
+
+	@Test
+	public void autoClassificationPropagatesDetectionFailuresAndAllowsRetry() {
+		Config c = new Config();
+		c.fail = true;
+		assertThrows(IllegalStateException.class, c::isKingBase);
+		assertThrows(IllegalStateException.class, c::isKingBaseCompatibilityMode);
+		assertEquals(2, c.opened.get());
+		c.fail = false;
+		assertTrue(c.isKingBaseCompatibilityMode());
+		assertFalse(c.isKingBase());
+		assertEquals(3, c.opened.get());
 	}
 
 	@Test
@@ -186,6 +204,8 @@ public class KingbaseModeResolverTest {
             detected.setCount(10).setPage(1);
 				reference.setCount(10).setPage(1);
 				assertEquals(expected, detected.gainSQLDatabase());
+				assertFalse(detected.isKingBase());
+				assertTrue(detected.isKingBaseCompatibilityMode());
 					assertEquals(reference.gainSQL(false), detected.gainSQL(false));
 					assertEquals(reference.gainSQL(true), detected.gainSQL(true));
 					assertEquals("mysql".equals(actual), detected.isKingBaseMySQL());
@@ -200,10 +220,10 @@ public class KingbaseModeResolverTest {
         }
     }
 
-    @Test public void unlistedDatabasesAreRejectedAsBackendAndDefaultConfiguration() {
+    @Test public void internalKingbaseModesAreRejectedAsBackendAndDefaultConfiguration() {
         String previous = AbstractSQLConfig.DEFAULT_DATABASE;
         try {
-            for (String dialect : Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER", "UNKNOWN_DB", "mysql")) {
+            for (String dialect : Arrays.asList("KINGBASE_MYSQL", "KINGBASE_ORACLE", "KINGBASE_SQLSERVER")) {
                 assertFalse(AbstractSQLConfig.DATABASE_LIST.contains(dialect));
                 assertFalse(KingbaseModeResolver.requiresDetection(dialect));
                 Config c = new Config(); c.setDatabase(dialect);
@@ -211,6 +231,19 @@ public class KingbaseModeResolverTest {
                 assertTrue(error.getMessage().contains("KINGBASE_AUTO"));
                 AbstractSQLConfig.DEFAULT_DATABASE = dialect; c.setDatabase(null);
                 assertThrows(IllegalArgumentException.class, c::gainSQLDatabase);
+                assertEquals(0, c.opened.get());
+            }
+        } finally { AbstractSQLConfig.DEFAULT_DATABASE = previous; }
+    }
+
+    @Test public void nativeBackendAndDefaultRoutesKeepTheirOriginalValidationContract() {
+        String previous = AbstractSQLConfig.DEFAULT_DATABASE;
+        try {
+            for (String database : Arrays.asList("UNKNOWN_DB", "mysql", "", " ")) {
+                Config c = new Config(); c.setDatabase(database);
+                assertEquals(database, c.gainSQLDatabase());
+                AbstractSQLConfig.DEFAULT_DATABASE = database; c.setDatabase(null);
+                assertEquals(database, c.gainSQLDatabase());
                 assertEquals(0, c.opened.get());
             }
         } finally { AbstractSQLConfig.DEFAULT_DATABASE = previous; }
@@ -278,6 +311,8 @@ public class KingbaseModeResolverTest {
 			c.setDatabase(db);
 			c.fail = true;
 			assertEquals(db, c.gainSQLDatabase());
+			assertEquals("KINGBASE".equals(db), c.isKingBase());
+			assertFalse(c.isKingBaseCompatibilityMode());
 			assertEquals(0, c.opened.get());
 		}
 		assertEquals(KingbaseSQLDialect.LEGACY, KingbaseSQLDialect.from("KINGBASE"));
@@ -290,9 +325,11 @@ public class KingbaseModeResolverTest {
 			AbstractSQLConfig.DEFAULT_DATABASE = SQLConfig.DATABASE_KINGBASE_AUTO;
 			Config c = new Config();
 			c.setDatabase(null);
-			assertTrue(c.isKingBase());
-			assertEquals(0, c.opened.get());
+			assertFalse(c.isKingBase());
+			assertEquals(1, c.opened.get());
+			assertTrue(c.isKingBaseCompatibilityMode());
 			assertTrue(c.isKingBaseMySQL());
+			assertEquals(1, c.opened.get());
 			assertNull(c.getDatabase());
 		} finally {
 			AbstractSQLConfig.DEFAULT_DATABASE = previous;
@@ -412,6 +449,60 @@ public class KingbaseModeResolverTest {
 						});
 		assertTrue(result.gainSQL(false).contains("`id`"));
 		assertEquals(1, c.opened.get());
+	}
+
+	@Test
+	public void metadataRequestIdsFollowDetectedModesAndPreserveCustomCallbacks() throws Exception {
+		String previous = AbstractSQLConfig.DEFAULT_DATABASE;
+		AbstractSQLConfigJoinCountTest.installJSONParser();
+		try {
+			AbstractSQLConfig.DEFAULT_DATABASE = SQLConfig.DATABASE_KINGBASE_AUTO;
+			Map<String, String> metadata = new LinkedHashMap<>();
+			metadata.put("Table", "table_name");
+			metadata.put("Column", "ordinal_position");
+			metadata.put("PgClass", "oid");
+			metadata.put("PgAttribute", "attnum");
+			for (String mode : Arrays.asList("mysql", "oracle", "sqlserver")) {
+				for (Map.Entry<String, String> table : metadata.entrySet()) {
+					for (String configured : Arrays.asList(null, SQLConfig.DATABASE_KINGBASE_AUTO)) {
+						for (boolean custom : Arrays.asList(false, true)) {
+							Config c = new Config();
+							c.mode = mode;
+							String idKey = custom ? "custom_id" : table.getValue();
+							Object id = "table_name".equals(idKey) ? "Orders" : 7L;
+							Map<String, Object> request = new LinkedHashMap<>();
+							if (configured != null) request.put("@database", configured);
+							request.put("@datasource", mode + table.getKey() + configured + custom);
+							request.put(idKey, id);
+							SQLConfig<Long, Map<String, Object>, List<Object>> result = AbstractSQLConfig.newSQLConfig(
+									RequestMethod.GET, table.getKey(), null, request, null, false,
+									new AbstractSQLConfig.SimpleCallback<Long, Map<String, Object>, List<Object>>() {
+										@Override public SQLConfig<Long, Map<String, Object>, List<Object>> getSQLConfig(
+												RequestMethod method, String database, String datasource, String namespace,
+												String catalog, String schema, String name) {
+											c.setMethod(method); c.setTable(name); return c;
+										}
+										@Override public String getIdKey(String database, String datasource, String namespace,
+												String catalog, String schema, String name) {
+											return custom ? idKey : super.getIdKey(database, datasource, namespace, catalog, schema, name);
+										}
+									});
+							assertEquals(mode + "/" + table.getKey() + "/" + idKey, id, result.getId());
+							assertEquals(table.getValue(), result.getIdKey());
+							assertFalse(result.isKingBase());
+							assertTrue(result.isKingBaseCompatibilityMode());
+							assertEquals(configured, result.getDatabase());
+							assertEquals(1, c.opened.get());
+							assertEquals(1, c.closed.get());
+							assertEquals(id, request.get(idKey));
+						}
+					}
+				}
+			}
+		} finally {
+			AbstractSQLConfig.DEFAULT_DATABASE = previous;
+			AbstractSQLConfigJoinCountTest.restoreJSONParser();
+		}
 	}
 
 	@Test

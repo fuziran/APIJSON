@@ -245,9 +245,12 @@ public class KingbaseCompatibilityTest {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> oracle = config(SQLConfig.DATABASE_KINGBASE_ORACLE);
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> sqlServer = config(SQLConfig.DATABASE_KINGBASE_SQLSERVER);
 
-		assertTrue(mysql.isKingBase() && mysql.isKingBaseMySQL() && mysql.isMSQL());
-		assertTrue(oracle.isKingBase() && oracle.isKingBaseOracle() && oracle.isTSQL());
-		assertTrue(sqlServer.isKingBase() && sqlServer.isKingBaseSQLServer() && sqlServer.isTSQL());
+		assertFalse(mysql.isKingBase());
+		assertFalse(oracle.isKingBase());
+		assertFalse(sqlServer.isKingBase());
+		assertTrue(mysql.isKingBaseCompatibilityMode() && mysql.isKingBaseMySQL() && mysql.isMSQL());
+		assertTrue(oracle.isKingBaseCompatibilityMode() && oracle.isKingBaseOracle() && oracle.isTSQL());
+		assertTrue(sqlServer.isKingBaseCompatibilityMode() && sqlServer.isKingBaseSQLServer() && sqlServer.isTSQL());
 		assertEquals("`", mysql.getQuote());
 		assertEquals(" ", oracle.gainAs());
 		assertEquals("\"", sqlServer.getQuote());
@@ -256,6 +259,31 @@ public class KingbaseCompatibilityTest {
 		assertEquals(KingbaseSQLDialect.ORACLE, KingbaseSQLDialect.from(SQLConfig.DATABASE_KINGBASE_ORACLE));
 		assertTrue(KingbaseSQLDialect.ORACLE.isOracle());
 		assertFalse(KingbaseSQLDialect.ORACLE.supportsDmlLimit());
+	}
+
+	@Test
+	public void compatibilityJoinOperatorsUseTheirModePredicates() {
+		for (String database : Arrays.asList(SQLConfig.DATABASE_KINGBASE_MYSQL,
+				SQLConfig.DATABASE_KINGBASE_ORACLE, SQLConfig.DATABASE_KINGBASE_SQLSERVER)) {
+			NativeDatabaseBaselineTest.Config c = new NativeDatabaseBaselineTest.Config(database, "9.0") {
+				@Override public String gainSQLDatabase() { return database; }
+			};
+			assertFalse(c.isKingBase());
+			assertTrue(c.isKingBaseCompatibilityMode());
+			String q = c.getQuote();
+			String pattern = q + "Comment" + q + "." + q + "pattern" + q;
+			String name = q + "User" + q + "." + q + "name" + q;
+			for (boolean ignoreCase : Arrays.asList(false, true)) {
+				String expected = c.isKingBaseSQLServer()
+						? pattern + " ~" + (ignoreCase ? "* " : " ") + name
+						: "regexp_like(" + pattern + ", " + name + (ignoreCase ? ", 'i'" : ", 'c'") + ")";
+				assertEquals(database, " ON " + expected, c.regexJoin(ignoreCase));
+			}
+			String contains = c.isKingBaseOracle()
+					? "json_textcontains(" + pattern + ", '$', " + name + ")"
+					: pattern + "::jsonb @> " + name + "::jsonb";
+			assertEquals(database, " ON " + pattern + " IS NOT NULL AND " + contains, c.relationJoin("<>"));
+		}
 	}
 
 	@Test

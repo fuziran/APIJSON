@@ -50,14 +50,18 @@ public class RequestStructureJsonTest {
 			assertEquals(
 					Boolean.TRUE, parser.getStructure("Request", "GETS", tag, 1).get("enabled"));
 			// Native string-backed rules retain the upstream contract in this adaptation.
-			assertThrows(
-					ClassCastException.class,
-					() -> new TestParser("MYSQL").getStructure("Request", "GETS", tag, 1));
+			for (String database : Arrays.asList("MYSQL", "ORACLE", "SQLSERVER", "KINGBASE")) {
+				assertThrows(
+						ClassCastException.class,
+						() -> new TestParser(database).getStructure("Request", "GETS", tag, 1));
+			}
 			Map<String, Object> rule = new LinkedHashMap<>();
 			rule.put("enabled", true);
 			row.put("structure", rule);
 			assertSame(rule, parser.getStructure("Request", "GETS", tag, 1));
-			assertSame(rule, new TestParser("MYSQL").getStructure("Request", "GETS", tag, 1));
+			for (String database : Arrays.asList("MYSQL", "ORACLE", "SQLSERVER", "KINGBASE")) {
+				assertSame(rule, new TestParser(database).getStructure("Request", "GETS", tag, 1));
+			}
 		} finally {
 			if (previous == null) AbstractVerifier.REQUEST_MAP.remove(key);
 			else AbstractVerifier.REQUEST_MAP.put(key, previous);
