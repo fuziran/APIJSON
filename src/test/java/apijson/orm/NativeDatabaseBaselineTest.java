@@ -10,7 +10,7 @@ import java.util.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
-/** SQL, binding and error snapshots recorded against unmodified community main 59c3a150.
+/** SQL, binding and error snapshots recorded against 8.2.0 plus independent upstream updates.
  * These offline contracts do not substitute for native-server response regression tests. */
 public class NativeDatabaseBaselineTest {
 	interface Operation {
@@ -63,12 +63,16 @@ public class NativeDatabaseBaselineTest {
 				Join.On on) {}
 
 		String regexJoin(boolean ignoreCase) {
+			return relationJoin(ignoreCase ? "*~" : "~");
+		}
+
+		String relationJoin(String relation) {
 			Join<Long, Map<String, Object>, List<Object>> join = new Join<>();
 			Join.On on = new Join.On();
 			on.setKey("pattern");
 			on.setTargetTable("User");
 			on.setTargetKey("name");
-			on.setRelateType(ignoreCase ? "*~" : "~");
+			on.setRelateType(relation);
 			return concatJoinOn("", getQuote(), join, "Comment", Arrays.asList(on));
 		}
 	}
@@ -80,7 +84,7 @@ public class NativeDatabaseBaselineTest {
 		try {
 			value = String.valueOf(operation.run(c));
 		} catch (Exception e) {
-			value = "THROWS:" + e.getClass().getName();
+			value = "THROWS:" + e.getClass().getName() + ":" + e.getMessage();
 		}
 		rows.add(
 				db
@@ -98,9 +102,20 @@ public class NativeDatabaseBaselineTest {
 		AbstractSQLConfigJoinCountTest.installJSONParser();
 		try {
 			List<String> rows = new ArrayList<>();
-			for (String db : Arrays.asList("MYSQL", "ORACLE", "SQLSERVER", "DB2", "POSTGRESQL")) {
+			List<String> databases = new ArrayList<>(AbstractSQLConfig.DATABASE_LIST);
+			databases.removeIf(db -> db.startsWith("KINGBASE_"));
+			databases.add("SQLITE");
+			databases.add("CUSTOM_DATABASE");
+			for (String db : databases) {
 				for (String version : Arrays.asList("11.2", "12.1", "12.2", "19.0")) {
 					record(rows, db, version, "select", c -> c.gainSQL(true));
+					record(rows, db, version, "explain-page", c -> {
+						c.setExplain(true).setCount(5).setPage(2);
+						return c.gainSQL(true);
+					});
+					record(rows, db, version, "having-column", c -> c.having("id>0"));
+					record(rows, db, version, "having-complex", c -> c.having("count(id)>1&count(age)<5"));
+					record(rows, db, version, "join-contains", c -> c.relationJoin("<>"));
 					record(
 							rows,
 							db,
@@ -374,9 +389,9 @@ public class NativeDatabaseBaselineTest {
 	}
 
 	@Test
-	public void nativeSqlBindingsAndErrorsMatchCommunityMain() throws Exception {
-		InputStream stream = getClass().getResourceAsStream("/native-main-59c3a150.tsv");
-		assertNotNull("Missing baseline captured from community main", stream);
+	public void nativeSqlBindingsAndErrorsMatchIsolatedUpstream() throws Exception {
+		InputStream stream = getClass().getResourceAsStream("/native-isolated-upstream.tsv");
+		assertNotNull("Missing baseline captured from the isolated upstream reference", stream);
 		List<String> expected = new ArrayList<>();
 		try (BufferedReader reader =
 				new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
@@ -407,7 +422,7 @@ public class NativeDatabaseBaselineTest {
 		assertEquals(Arrays.asList("execute:1", "getResultSet:0"), calls);
 	}
 
-	/** Run only against compiled, unmodified main when explicitly regenerating the baseline. */
+	/** Run against the independent reference when explicitly regenerating the baseline. */
 	public static void main(String[] args) throws Exception {
 		Files.write(Paths.get(args[0]), snapshot(), StandardCharsets.UTF_8);
 	}

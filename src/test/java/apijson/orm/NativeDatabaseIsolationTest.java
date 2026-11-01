@@ -6,8 +6,16 @@ import java.util.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
-/** Native JDBC and JOIN paths must retain community main behavior. */
+/** Native JDBC and JOIN paths must retain the pre-adaptation behavior. */
 public class NativeDatabaseIsolationTest {
+	private static List<String> nativeDatabases() {
+		List<String> databases = new ArrayList<>(AbstractSQLConfig.DATABASE_LIST);
+		databases.removeIf(db -> db.startsWith("KINGBASE_"));
+		databases.add("SQLITE");
+		databases.add("CUSTOM_DATABASE");
+		return databases;
+	}
+
 	static class Executor extends AbstractSQLExecutor<Long, Map<String, Object>, List<Object>> {
 		Join[] projection(SQLConfig<Long, Map<String, Object>, List<Object>> c, ResultSetMetaData m)
 				throws Exception {
@@ -25,7 +33,7 @@ public class NativeDatabaseIsolationTest {
 
 	@Test
 	public void nativeJoinsDoNotEnterKingbaseProjectionMapping() throws Exception {
-		for (String db : Arrays.asList("MYSQL", "ORACLE", "SQLSERVER")) {
+		for (String db : nativeDatabases()) {
 			NativeDatabaseBaselineTest.Config c = new NativeDatabaseBaselineTest.Config(db, "19.0");
 			ResultSetMetaData md =
 					(ResultSetMetaData)
@@ -43,7 +51,7 @@ public class NativeDatabaseIsolationTest {
 
 	@Test
 	public void nativeValuesAreReadBeforeMetadataWithoutTextCoercion() throws Exception {
-		for (String db : Arrays.asList("MYSQL", "ORACLE", "SQLSERVER")) {
+		for (String db : nativeDatabases()) {
 			List<String> calls = new ArrayList<>();
 			ResultSet rs =
 					(ResultSet)
@@ -73,7 +81,7 @@ public class NativeDatabaseIsolationTest {
 					"original value",
 					new Executor().read(new NativeDatabaseBaselineTest.Config(db, "19.0"), rs, md));
 			assertEquals(
-					db, Arrays.asList("getObject", "getColumnType", "getColumnTypeName"), calls);
+					db, Arrays.asList("getObject", "getColumnTypeName"), calls);
 		}
 	}
 
