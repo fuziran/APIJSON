@@ -162,18 +162,6 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		return rs;
 	}
 
-	/** Kingbase-specific prepared execution and implicit-result handling. */
-	protected ResultSet executeKingbase(@NotNull Statement statement, String sql) throws Exception {
-		boolean hasResult = statement instanceof PreparedStatement
-				? ((PreparedStatement) statement).execute() : statement.execute(sql);
-		// Oracle throws ORA-17283 if getResultSet is called before advancing past
-		// an anonymous block to its DBMS_SQL.RETURN_RESULT result set.
-		if (!hasResult && sql != null && sql.trim().regionMatches(true, 0, "BEGIN ", 0, 6)) {
-			hasResult = statement.getMoreResults(Statement.CLOSE_CURRENT_RESULT);
-		}
-		return hasResult ? statement.getResultSet() : null;
-	}
-
 	public static int MIN_OPTIMIZE_CAPACITY = 2^16 - 1;
 
 	/**执行SQL
@@ -189,11 +177,6 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		if (StringUtil.isEmpty(sql, true)) {
 			Log.e(TAG, "execute  StringUtil.isEmpty(sql, true) >> return null;");
 			return null;
-		}
-		boolean kingbaseProcedure = unknownType && config.isKingBaseCompatibilityMode()
-				&& StringUtil.isNotEmpty(config.getProcedure(), true);
-		if (kingbaseProcedure && config.isExplain()) {
-			throw new UnsupportedOperationException("EXPLAIN is not supported for Kingbase procedure calls");
 		}
 
 		Parser<T, M, L> parser2 = config.gainParser();
@@ -218,8 +201,6 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 				+ "; sql = \n" + sql
 				+ "\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 
-		if (kingbaseProcedure) return executeKingbaseProcedure(config, sql);
-
 		ResultSet rs = null;
 		List<M> resultList = null;
 		Map<String, M> childMap = null;
@@ -232,7 +213,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 					executedSQLStartTime = System.currentTimeMillis();
 				}
 				Statement statement = getStatement(config);
-				rs = config.isKingBaseCompatibilityMode() ? executeKingbase(statement, sql) : execute(statement, sql);
+				rs = execute(statement, sql);
 				int updateCount = statement.getUpdateCount();
 				if (isExplain == false) {
 					executedSQLDuration += System.currentTimeMillis() - executedSQLStartTime;
@@ -994,47 +975,6 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 
 
 
-	/** Execute once and expose zero or one business result set, independently of CRUD method flags. */
-	protected M executeKingbaseProcedure(SQLConfig<T, M, L> config, String sql) throws Exception {
-		long start = System.currentTimeMillis();
-		executedSQLCount++;
-		try (PreparedStatement statement = getStatement(config)) {
-			boolean hasResult = statement.execute();
-			int count = statement.getUpdateCount();
-			boolean advance = !hasResult && (count >= 0 || config.isKingBaseOracle());
-			while (advance) {
-				hasResult = statement.getMoreResults(Statement.CLOSE_CURRENT_RESULT);
-				if (hasResult) break;
-				int nextCount = statement.getUpdateCount();
-				// Retain the first available count; it is not a sum of the procedure's writes.
-				if (count < 0 && nextCount >= 0) count = nextCount;
-				advance = nextCount >= 0;
-			}
-			M result = JSON.createJSONObject();
-			List<M> rows = new ArrayList<>();
-			result.put(JSONResponse.KEY_COUNT, count);
-			result.put("update", count >= 0);
-			if (hasResult) {
-				try (ResultSet rs = statement.getResultSet()) {
-					if (rs == null) throw new SQLException("Procedure reported a result set but returned no cursor");
-					ResultSetMetaData metadata = rs.getMetaData();
-					int length = metadata.getColumnCount(), row = 0;
-					while (rs.next()) {
-						M item = JSON.createJSONObject();
-						for (int i = 1; i <= length; i++) {
-							item = onPutColumn(config, rs, metadata, row, item, i, null, null, null);
-						}
-						rows = onPutTable(config, rs, metadata, rows, row++, item);
-					}
-				}
-			}
-			result.put("list", rows);
-			return result;
-		} finally {
-			executedSQLDuration += System.currentTimeMillis() - start;
-		}
-	}
-
 	/** Infer Kingbase SELECT boundaries without relying on first-row values or JDBC table names. */
 	protected Join[] resolveProjectionJoins(SQLConfig<T, M, L> config, ResultSetMetaData md) throws SQLException {
 		if (!(config.isKingBaseOracle() || config.isKingBaseMySQL() || config.isKingBaseSQLServer()) || config.isExplain()
@@ -1151,7 +1091,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		String columnName = rsmd.getColumnName(columnIndex);
 		// Kingbase Oracle pagination appends ROWNUM as the final RN column. It is
 		// an implementation detail and must not leak into the API response.
-		if (config.isKingBaseOracle() && StringUtil.isEmpty(config.getProcedure(), true) && config.getCount() > 0
+		if (config.isKingBaseOracle() && config.getCount() > 0
 				&& columnIndex == rsmd.getColumnCount() && "RN".equalsIgnoreCase(columnName)) {
 			return true;
 		}
@@ -1690,13 +1630,11 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	@Override
 	public PreparedStatement getStatement(@NotNull SQLConfig<T, M, L> config, String sql) throws Exception {
 		boolean kingbase = config.isKingBaseCompatibilityMode();
-		boolean kingbaseProcedure = kingbase && StringUtil.isNotEmpty(config.getProcedure(), true);
 		if (!kingbase && StringUtil.isEmpty(sql)) {
 			sql = config.gainSQL(config.isPrepared());
 		}
 		Connection conn = getConnection(config);
-		if (kingbaseProcedure && StringUtil.isEmpty(sql)) sql = config.gainSQL(true);
-		if (kingbase && !kingbaseProcedure && prepareDatabaseGeneratedId(config, conn)) {
+		if (kingbase && prepareDatabaseGeneratedId(config, conn)) {
 			// The caller may have generated SQL before metadata inspection. Rebuild it
 			// after removing APIJSON's synthetic id from the INSERT.
 			sql = null;
@@ -1705,10 +1643,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 			sql = config.gainSQL(config.isPrepared());
 		}
 		PreparedStatement statement; //创建Statement对象
-		if (kingbaseProcedure) {
-			statement = conn.prepareStatement(sql);
-		}
-		else if (config.getMethod() == RequestMethod.POST && config.getId() == null) { //自增id
+		if (config.getMethod() == RequestMethod.POST && config.getId() == null) { //自增id
 			if (config.isOracle() || kingbase) {
 				// Oracle and Kingbase JDBC require the generated column name; the
 				// RETURN_GENERATED_KEYS flag alone may leave generatedKeys null.
@@ -1748,7 +1683,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 			statement = conn.prepareStatement(sql);
 		}
 
-		List<Object> valueList = kingbaseProcedure || config.isPrepared() ? config.getPreparedValueList() : null;
+		List<Object> valueList = config.isPrepared() ? config.getPreparedValueList() : null;
 //		List<Object> withAsExprePreparedValueList = config.isPrepared() ? config.getWithAsExprePreparedValueList() : null;
 //
 //		// 不同数据库, 预编译mysql使用with-as
@@ -1760,15 +1695,8 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 //		}
 
 		if (valueList != null && valueList.isEmpty() == false) {
-			try {
-				for (int i = 0; i < valueList.size(); i++) {
-					statement = setArgument(config, statement, i, valueList.get(i));
-				}
-			} catch (SQLException | RuntimeException e) {
-				if (kingbaseProcedure) {
-					try { statement.close(); } catch (SQLException close) { e.addSuppressed(close); }
-				}
-				throw e;
+			for (int i = 0; i < valueList.size(); i++) {
+				statement = setArgument(config, statement, i, valueList.get(i));
 			}
 		}
 		// statement.close();

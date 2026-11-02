@@ -1601,13 +1601,15 @@ public class KingbaseCompatibilityTest {
 	}
 
 	@Test
-	public void kingbaseOracleProceduresUseAnonymousBlocksForImplicitResults() throws Exception {
-		for (String db : new String[] {SQLConfig.DATABASE_KINGBASE_ORACLE}) {
+	public void kingbaseProceduresKeepTheOriginalTextCall() throws Exception {
+		for (String db : new String[] {SQLConfig.DATABASE_KINGBASE_MYSQL,
+				SQLConfig.DATABASE_KINGBASE_ORACLE, SQLConfig.DATABASE_KINGBASE_SQLSERVER}) {
 			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> c = config(db);
 			c.setProcedure("getCommentByUserId(82001,10,0)");
 			String sql = c.gainSQL(true);
-			assertTrue(sql, sql.startsWith("BEGIN "));
-			assertTrue(sql, sql.endsWith("; END;"));
+			assertTrue(sql, sql.startsWith("CALL "));
+			assertTrue(sql, sql.endsWith(".getCommentByUserId(82001,10,0)"));
+			assertTrue(c.getPreparedValueList().isEmpty());
 		}
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> c =
 				config(SQLConfig.DATABASE_MYSQL);

@@ -436,12 +436,6 @@ public interface SQLConfig<T, M extends Map<String, Object>, L extends List<Obje
 	String gainSubqueryString(Subquery<T, M, L> subquery) throws Exception;
 
 	SQLConfig<T, M, L> setProcedure(String procedure);
-	/** Existing implementations may keep their original procedure representation. */
-	default String getProcedure() { return null; }
-	/** Parameterized Kingbase IN call; the name contains no argument expression. */
-	default SQLConfig<T, M, L> setProcedure(String name, List<Object> arguments) {
-		throw new UnsupportedOperationException("Parameterized procedures require SQLConfig support");
-	}
 
 
 	List<Object> getWithAsExprPreparedValueList();

@@ -1112,12 +1112,7 @@ public abstract class AbstractObjectParser<T, M extends Map<String, Object>, L e
             if (StringUtil.isNotEmpty(sch, true)) {
                 config.setSchema(sch);
             }
-			if (config.isKingBaseCompatibilityMode()) {
-				String procedureName = StringUtil.isEmpty(sch, true) ? fb.getMethod() : sch + "." + fb.getMethod();
-				config.setProcedure(procedureName, KingbaseProcedureCall.arguments(fb, currentObject, containRaw));
-			} else {
-				config.setProcedure(fb.toFunctionCallString(true));
-			}
+			config.setProcedure(fb.toFunctionCallString(true));
 			result = parseResponse(config, true);
 
 			key = key.substring(1);

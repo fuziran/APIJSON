@@ -974,27 +974,13 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	private boolean test; //测试
 
 	private String procedure;
-	private KingbaseProcedureCall kingbaseProcedureCall;
 
 	public AbstractSQLConfig<T, M, L> setProcedure(String procedure) {
-		if (kingbaseProcedureCall != null) setPreparedValueList(new ArrayList<>());
-		kingbaseProcedureCall = null;
 		this.procedure = procedure;
 		return this;
 	}
-	@Override
 	public String getProcedure() {
 		return procedure;
-	}
-	@Override
-	public AbstractSQLConfig<T, M, L> setProcedure(String name, List<Object> arguments) {
-		if (!isKingBaseCompatibilityMode()) {
-			throw new UnsupportedOperationException("Parameterized procedures are limited to Kingbase compatibility modes");
-		}
-		kingbaseProcedureCall = new KingbaseProcedureCall(name, arguments);
-		procedure = kingbaseProcedureCall.invocation();
-		setPrepared(true);
-		return this;
 	}
 
 	public AbstractSQLConfig(RequestMethod method) {
@@ -5471,13 +5457,6 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// for (...) { Call procedure1();\n SQL \n; Call procedure2(); ... }
 		// 貌似不需要，因为 ObjectParser<T, M, L> 里就已经处理的顺序等，只是这里要解决下 Schema 问题。
 		String table = config.getTable();
-		if (config.kingbaseProcedureCall != null) {
-			if (!config.isKingBaseCompatibilityMode()) {
-				throw new IllegalStateException("A parameterized Kingbase procedure cannot change database dialect");
-			}
-			config.setPreparedValueList(new ArrayList<>(config.kingbaseProcedureCall.getArguments()));
-			return config.kingbaseProcedureCall.sql(config);
-		}
 		String procedure = config.getProcedure();
 		if (StringUtil.isNotEmpty(procedure, true)) {
 			int ind = procedure.indexOf(".");
@@ -5487,8 +5466,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			) : config.gainSQLSchema();
 
 			String q = config.getQuote();
-			String call = q + sch + q + "." + (hasPrefix ? procedure.substring(ind + 1) : procedure);
-			return config.isKingBaseOracle() ? "BEGIN " + call + "; END;" : "CALL " + call;
+			return "CALL " + q + sch + q + "." + (hasPrefix ? procedure.substring(ind + 1) : procedure);
 		}
 
 		String tablePath = config.gainTablePath();
