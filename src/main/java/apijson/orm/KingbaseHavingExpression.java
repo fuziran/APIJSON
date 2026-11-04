@@ -24,6 +24,9 @@ final class KingbaseHavingExpression {
 	}
 
 	static String parse(String input, Set<String> aliases, String quote) {
+		// Function arguments can share names with projected aliases, for example
+		// id:id with count(id)>0. Let the existing function parser handle them.
+		if (Pattern.compile("[A-Za-z_][A-Za-z0-9_]*\\s*\\(").matcher(input).find()) return null;
 		if (input.length() > 100) {
 			throw new UnsupportedOperationException(
 					"Kingbase alias HAVING cannot exceed 100 characters");

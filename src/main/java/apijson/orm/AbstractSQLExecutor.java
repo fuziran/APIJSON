@@ -1343,6 +1343,14 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	/** Default KingbaseES MySQL-mode DB type to JSON-safe Java type mapping. */
 	protected Object mapKingbaseMySQLResultValue(@NotNull SQLConfig<T, M, L> config, Object value
 			, int jdbcType, String typeName, String label) throws Exception {
+		if (config instanceof AbstractSQLConfig
+				&& ((AbstractSQLConfig<?, ?, ?>) config).isKingbaseMySQLSumAlias(label)
+				&& (value instanceof Byte || value instanceof Short || value instanceof Integer
+				|| value instanceof Long || value instanceof BigInteger)) {
+			// MySQL SUM(exact integer) is DECIMAL, serialized by the native path
+			// as a string. Do not change COUNT, ordinary integers or floating SUM.
+			return value.toString();
+		}
 		return mapKingbaseResultValue(config, value, jdbcType, typeName, label);
 	}
 

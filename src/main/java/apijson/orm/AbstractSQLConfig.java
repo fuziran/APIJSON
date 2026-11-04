@@ -77,7 +77,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	public static Pattern PATTERN_RANGE;
 	public static Pattern PATTERN_FUNCTION;
 	private static final Pattern MYSQL_INTERVAL_LITERAL_PATTERN = Pattern.compile(
-			"(?i)^INTERVAL\\s+([+-]?\\d+)\\s+"
+			"(?i)^INTERVAL\\s+([+-]?\\d+|'[+-]?\\d+'|\\?)\\s+"
 					+ "(MICROSECOND|SECOND|MINUTE|HOUR|DAY|WEEK|MONTH|QUARTER|YEAR)$"
 	);
 
@@ -951,6 +951,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	private List<String> column; //表内字段名(或函数名，仅查询操作可用)的字符串数组，','分隔
 	private Map<String, String> columnAliasExpressionMap;
 	private Set<String> kingbaseMySQLLocalDateTimeAliases;
+	private Set<String> kingbaseMySQLSumAliases;
 	private List<List<Object>> values; //对应表内字段的值的字符串数组，','分隔
 	private List<String> nulls;
 	private Map<String, String> cast;
@@ -1928,10 +1929,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 	/**
 	 * Builds a function expression after its arguments have passed the normal
-	 * APIJSON validation and quoting pipeline. KingbaseES MySQL compatibility
-	 * mode does not accept MySQL's {@code DATE_ADD(date, INTERVAL n unit)} or
-	 * {@code DATE_SUB(...)} grammar. Translate only this dialect and only a
-	 * numeric interval literal; native databases keep their original syntax.
+	 * APIJSON validation and quoting pipeline. With mysql_interval_style=off,
+	 * Kingbase needs a quoted interval. Keep DATE_ADD/DATE_SUB themselves: their
+	 * DATE, DATETIME and text return rules differ from date +/- interval.
 	 */
 	protected String gainSQLFunctionExpression(String function, String[] args,
 			boolean distinct, String suffix) {
@@ -1958,9 +1958,26 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			return original;
 		}
 
-		String operator = "date_sub".equalsIgnoreCase(function) ? " - " : " + ";
-		return "(" + args[0] + operator + "INTERVAL '" + matcher.group(1) + " "
-				+ matcher.group(2).toUpperCase(Locale.ROOT) + "')" + suffix;
+		String amount = matcher.group(1);
+		String unit = matcher.group(2).toUpperCase(Locale.ROOT);
+		String interval;
+		if ("?".equals(amount)) {
+			// Negative literals have already been bound by the common parser.
+			// Keep an interval constant: a parameter cast makes Kingbase infer
+			// DATETIME even for DATE + DAY. Only validated integers are inlined.
+			List<Object> values = getPreparedValueList();
+			int index = values.size() - 1;
+			Object value = index < 0 ? null : values.get(index);
+			if (value == null || !value.toString().matches("[+-]?\\d+")) {
+				return original;
+			}
+			values.remove(index);
+			interval = "INTERVAL '" + value + " " + unit + "'";
+		}
+		else {
+			interval = "INTERVAL '" + amount.replace("'", "") + " " + unit + "'";
+		}
+		return gainSQLFunction(function) + "(" + args[0] + "," + interval + ")" + suffix;
 	}
 
 	/**
@@ -2700,6 +2717,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		case GET:
 		case GETS:
 			columnAliasExpressionMap = isKingBaseMySQL() ? new LinkedHashMap<>() : null;
+			kingbaseMySQLLocalDateTimeAliases = null;
+			kingbaseMySQLSumAliases = null;
 			String joinColumn = "";
 			if (joinList != null) {
 				boolean first = true;
@@ -2887,6 +2906,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				}
 
 				// 解析函数内的参数
+				int functionParameterStart = getPreparedValueList() == null ? 0 : getPreparedValueList().size();
 				String ckeys[];
 				if ("date_format".equalsIgnoreCase(fun) && isKingBaseSQLServer()) {
 					String[] dateArgs = StringUtil.split(s);
@@ -2929,8 +2949,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 							+ " 中 ?value 必须符合正则表达式 " + PATTERN_RANGE + " 且不包含连续减号 -- 或注释符 /* ！不允许多余的空格！");
 				}
 
+				String nativeOrigin = gainSQLFunction(fun) + "(" + (distinct ? PREFIX_DISTINCT : "")
+						+ StringUtil.get(ckeys) + ")" + suffix;
+				if (isKingBaseMySQL() && isMySQLDateArithmeticFunction(fun)
+						&& allowAlias && KEY_COLUMN.equals(key) && StringUtil.isEmpty(alias, true)) {
+					nativeOrigin = gainKingbaseMySQLLiteralResponseLabel(nativeOrigin, functionParameterStart);
+				}
 				String origin = gainSQLFunctionExpression(fun, ckeys, distinct, suffix);
-				String responseAlias = gainKingbaseMySQLAggregateResponseAlias(key, fun, origin, suffix, alias, allowAlias);
+				String responseAlias = gainKingbaseMySQLAggregateResponseAlias(key, fun, nativeOrigin, suffix, alias, allowAlias);
 				expression = origin + (StringUtil.isEmpty(responseAlias, true)
 						? "" : gainAs() + quote + (isKingBaseCompatibilityMode() ? responseAlias.replace(quote, quote + quote) : responseAlias) + quote);
 			}
@@ -3000,33 +3026,64 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	/**
-	 * Kingbase exposes an unaliased aggregate under the driver's shortened
+	 * Kingbase exposes an unaliased aggregate/date function under the driver's shortened
 	 * function name (for example {@code count}), while MySQL exposes the original
 	 * expression (for example {@code count(1)}). Preserve the API response key for
-	 * cross-database comparison without changing native database SQL.
+	 * cross-database comparison without changing native database SQL. Projection
+	 * markers also retain the native MySQL result type and timestamp formatting.
 	 */
 	protected String gainKingbaseMySQLAggregateResponseAlias(String key, String function,
 			String origin, String suffix, String alias, boolean allowAlias) {
-		if (isKingBaseMySQL() && KEY_COLUMN.equals(key) && StringUtil.isNotEmpty(alias, true)
-				&& ("date_add".equalsIgnoreCase(function) || "date_sub".equalsIgnoreCase(function))) {
-			if (kingbaseMySQLLocalDateTimeAliases == null) {
-				kingbaseMySQLLocalDateTimeAliases = new HashSet<>();
-			}
-			kingbaseMySQLLocalDateTimeAliases.add(alias);
-		}
-		if (StringUtil.isNotEmpty(alias, true) || allowAlias == false || KEY_COLUMN.equals(key) == false
-				|| isKingBaseMySQL() == false || SQL_AGGREGATE_FUNCTION_MAP.containsKey(function) == false
+		if (isKingBaseMySQL() == false || !KEY_COLUMN.equals(key) || !allowAlias
 				|| StringUtil.isNotEmpty(suffix, true)) {
 			return alias;
 		}
-		return origin;
+		boolean date = isMySQLDateArithmeticFunction(function);
+		String label = StringUtil.isNotEmpty(alias, true) ? alias
+				: (date || SQL_AGGREGATE_FUNCTION_MAP.containsKey(function) ? origin : null);
+		if (date && StringUtil.isNotEmpty(label, true)) {
+			if (kingbaseMySQLLocalDateTimeAliases == null) {
+				kingbaseMySQLLocalDateTimeAliases = new HashSet<>();
+			}
+			kingbaseMySQLLocalDateTimeAliases.add(label);
+		}
+		if ("sum".equalsIgnoreCase(function) && StringUtil.isNotEmpty(label, true)) {
+			if (kingbaseMySQLSumAliases == null) kingbaseMySQLSumAliases = new HashSet<>();
+			kingbaseMySQLSumAliases.add(label);
+		}
+		return label;
+	}
+
+	private boolean isMySQLDateArithmeticFunction(String function) {
+		return "date_add".equalsIgnoreCase(function) || "date_sub".equalsIgnoreCase(function);
+	}
+
+	/** MySQL's unaliased expression label includes the values of bound literals. */
+	private String gainKingbaseMySQLLiteralResponseLabel(String sql, int parameterStart) {
+		StringBuilder label = new StringBuilder();
+		int parameter = parameterStart;
+		for (int i = 0; i < sql.length(); i++) {
+			char ch = sql.charAt(i);
+			if (ch != '?') {
+				label.append(ch);
+				continue;
+			}
+			Object value = getPreparedValueList().get(parameter++);
+			if (value == null || value instanceof Number) label.append(value);
+			else label.append('\'').append(value.toString().replace("\\", "\\\\").replace("'", "\\'")).append('\'');
+		}
+		return label.toString();
+	}
+
+	public boolean isKingbaseMySQLSumAlias(String label) {
+		return isKingBaseMySQL() && kingbaseMySQLSumAliases != null && kingbaseMySQLSumAliases.contains(label);
 	}
 
 	/**
 	 * Whether a Kingbase timestamp column came from a translated MySQL
 	 * DATE_ADD/DATE_SUB projection. The Kingbase driver exposes these expressions
 	 * as {@link java.sql.Timestamp}, while MySQL exposes them as
-	 * {@link java.time.LocalDateTime}; recording the explicit response alias lets
+	 * {@link java.time.LocalDateTime}; recording the response label lets
 	 * the executor normalize only the computed value without changing ordinary
 	 * table timestamp columns.
 	 */
@@ -5124,7 +5181,20 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					condition += (gainKey(column) + " @> " + gainValue(key, column, newJSONArray(c)));
 					// operator does not exist: jsonb @> character varying  "[" + c + "]");
 				}
-				else if (isKingBaseMySQL() || isKingBaseSQLServer()) {
+				else if (isKingBaseMySQL()) {
+					String target = gainKey(column) + "::jsonb";
+					for (String step : KingbaseMySQLJsonPath.steps((String) path)) {
+						target = "jsonb_path_query_first(" + target + ", CAST("
+								+ gainValue(key, column, step) + " AS jsonpath), '{}'::jsonb, true)";
+					}
+					// A scalar candidate matches both an equal scalar and an array
+					// containing it. Wrapping it in [candidate] breaks scalar targets.
+					String candidate = c instanceof String
+							? "to_jsonb(CAST(" + gainValue(key, column, c) + " AS varchar))"
+							: gainValue(key, column, c == null ? "null" : c.toString()) + "::jsonb";
+					condition += target + " @> " + candidate;
+				}
+				else if (isKingBaseSQLServer()) {
 					condition += (gainKey(column) + "::jsonb @> " + gainValue(key, column, newJSONArray(c)) + "::jsonb");
 				}
 				else if (isOracle() || isDameng() || isKingBase() || isKingBaseOracle()) {
