@@ -41,6 +41,12 @@ final class KingbaseMySQLJsonPath {
 				if (end < 0) throw invalid();
 				String index = path.substring(i, end).trim();
 				if (!index.matches("(?:[0-9]+|last(?:\\s*-\\s*[0-9]+)?)")) throw invalid();
+				// JSONPath rejects leading zeroes; MySQL accepts them as decimal indices.
+				java.util.regex.Matcher digits = java.util.regex.Pattern.compile("[0-9]+").matcher(index);
+				StringBuffer normalized = new StringBuffer();
+				while (digits.find()) digits.appendReplacement(normalized, digits.group().replaceFirst("^0+(?!$)", ""));
+				digits.appendTail(normalized);
+				index = normalized.toString();
 				i = end + 1;
 				// MySQL treats a non-array as a singleton for array subscripts.
 				steps.add("lax $[" + index + "]");

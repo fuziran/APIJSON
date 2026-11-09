@@ -128,9 +128,13 @@ public class KingbaseSemanticsRegressionTest {
 	}
 
 	@Test
-	public void unavailableWrapperOrderIsRejectedInsteadOfSilentlyDiscarded() {
+	public void unavailableWrapperOrderIsProjectedInternallyWithoutChangingTheResponse() throws Exception {
 		AbstractSQLConfig<Long, Map<String, Object>, List<Object>> c = aliasQuery("age+");
-		assertThrows(UnsupportedOperationException.class, () -> c.gainSQL(true));
+		String sql = c.gainSQL(true);
+		assertTrue(sql, sql.startsWith("SELECT `n`, `name` FROM ("));
+		assertTrue(sql, sql.contains("`age` AS `_apijson_order_0`"));
+		assertTrue(sql, sql.contains("ORDER BY `_apijson_order_0` ASC"));
+		assertEquals(sql, c.gainSQL(true));
 	}
 
 	@Test

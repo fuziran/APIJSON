@@ -277,10 +277,13 @@ public class KingbaseCompatibilityTest {
 				String expected = c.isKingBaseSQLServer()
 						? pattern + " ~" + (ignoreCase ? "* " : " ") + name
 						: "regexp_like(" + pattern + ", " + name + (ignoreCase ? ", 'i'" : ", 'c'") + ")";
+				if (c.isKingBaseMySQL()) expected = "(CASE WHEN " + pattern + " IS NULL OR " + name
+						+ " IS NULL THEN NULL ELSE " + expected + " END)";
 				assertEquals(database, " ON " + expected, c.regexJoin(ignoreCase));
 			}
 			String contains = c.isKingBaseOracle()
 					? "json_textcontains(" + pattern + ", '$', " + name + ")"
+					: c.isKingBaseMySQL() ? pattern + "::jsonb @> to_jsonb(" + name + ")"
 					: pattern + "::jsonb @> " + name + "::jsonb";
 			assertEquals(database, " ON " + pattern + " IS NOT NULL AND " + contains, c.relationJoin("<>"));
 		}
@@ -792,7 +795,8 @@ public class KingbaseCompatibilityTest {
 				SQLConfig.DATABASE_KINGBASE_SQLSERVER
 		}) {
 			String sql = config(database).gainContainString("get<>", "get", new Object[] {"UNKNOWN"}, Logic.TYPE_OR);
-			assertTrue(sql, sql.contains("::jsonb @>"));
+			assertTrue(sql, sql.contains(SQLConfig.DATABASE_KINGBASE_MYSQL.equals(database)
+						? "bool_or(v @>" : "::jsonb @>"));
 			assertTrue(sql, !sql.contains("json_contains("));
 			assertTrue(sql, !sql.contains("json_textcontains("));
 		}
@@ -1314,7 +1318,8 @@ public class KingbaseCompatibilityTest {
 			vice.setJson(Arrays.asList("payload"));
 			Object child = executor.put(main, join).get("payload");
 			boolean kingbaseJoinJson =
-					"KINGBASE_ORACLE".equals(database) || "KINGBASE_SQLSERVER".equals(database);
+					"KINGBASE_ORACLE".equals(database) || "KINGBASE_SQLSERVER".equals(database)
+							|| "KINGBASE_MYSQL".equals(database);
 			assertEquals(database, kingbaseJoinJson, child instanceof Map);
 			assertTrue(executor.put(main, null).get("payload") instanceof String);
 			main.setJson(Arrays.asList("payload"));

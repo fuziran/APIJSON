@@ -11,6 +11,7 @@ import apijson.orm.exception.NotExistException;
 import apijson.orm.exception.UnsupportedDataTypeException;
 import apijson.orm.model.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.regex.Pattern;
@@ -80,6 +81,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 			"(?i)^INTERVAL\\s+([+-]?\\d+|'[+-]?\\d+'|\\?)\\s+"
 					+ "(MICROSECOND|SECOND|MINUTE|HOUR|DAY|WEEK|MONTH|QUARTER|YEAR)$"
 	);
+	private static final Pattern MYSQL_TIME_FRACTION_PATTERN = Pattern.compile("\\.([0-9]+)$");
+	private static final int KINGBASE_MYSQL_IDENTIFIER_BYTES = 63;
+	private static final String KINGBASE_MYSQL_PROJECTION_PREFIX = "$apijson$";
 
 	/**
 	 * 表 SCHEMA 映射
@@ -950,8 +954,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	private Subquery<T, M, L> from; //子查询临时表
 	private List<String> column; //表内字段名(或函数名，仅查询操作可用)的字符串数组，','分隔
 	private Map<String, String> columnAliasExpressionMap;
+	private Map<String, String> kingbaseMySQLProjectionLabels;
 	private Set<String> kingbaseMySQLLocalDateTimeAliases;
 	private Set<String> kingbaseMySQLSumAliases;
+	private Map<String, String> kingbaseMySQLHavingOrderAliases;
 	private List<List<Object>> values; //对应表内字段的值的字符串数组，','分隔
 	private List<String> nulls;
 	private Map<String, String> cast;
@@ -1758,8 +1764,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 * MySQL can infer that a selected main-table JOIN key is functionally
 	 * dependent on the grouped vice-table key. Kingbase MySQL mode follows the
 	 * stricter PostgreSQL grouping rule and requires that selected key to appear
-	 * explicitly in GROUP BY. Supplement only explicit, simple main-table
-	 * columns, only when grouping comes from a SQL JOIN; native databases and
+	 * explicitly in GROUP BY. Supplement explicit main-table scalar projections
+	 * only when grouping comes from a SQL JOIN; native databases and
 	 * ordinary non-JOIN grouping remain unchanged.
 	 */
 	protected String gainKingbaseMySQLMainGroupForJoin(String joinGroup) {
@@ -1769,11 +1775,21 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		}
 
 		String selectedGroup = "";
+		int projection = 1;
 		for (String item : column) {
 			String key = StringUtil.trim(item);
-			if (StringUtil.isName(key)) {
+			int alias = KingbaseMySQLExpressions.aliasIndex(key);
+			if (alias >= 0) key = key.substring(0, alias);
+			if (key.matches("[A-Za-z_][A-Za-z0-9_]*")) {
 				selectedGroup = StringUtil.concat(selectedGroup, gainKey(key), ", ", true);
+			} else if (key.contains("(") && !KingbaseMySQLExpressions.hasAggregateOrWindow(key, SQL_AGGREGATE_FUNCTION_MAP.keySet())
+					&& !KingbaseMySQLExpressions.hasVolatileFunction(key)) {
+				// A repeated bound expression has different parameter identities ($1/$2)
+				// and is not an equal GROUP BY expression. Reference its validated SELECT
+				// position instead, without duplicating arguments or evaluating it again.
+				selectedGroup = StringUtil.concat(selectedGroup, String.valueOf(projection), ", ", true);
 			}
+			projection += KingbaseMySQLExpressions.projectionSize(item);
 		}
 		return selectedGroup;
 	}
@@ -1911,7 +1927,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		// MATCH(...) AGAINST(...) is a two-part full-text expression. Passing only
 		// the substring beginning with '(' drops the MATCH function name, which
 		// prevents database-specific full-text conversion from recognizing it.
-		if (isKingBaseCompatibilityMode() && expression.indexOf(")AGAINST(") > start) {
+		if ((isKingBaseCompatibilityMode() && expression.indexOf(")AGAINST(") > start)
+				|| ("length".equalsIgnoreCase(method) && isKingBaseMySQL())) {
 			return parseSQLExpression(KEY_HAVING, expression, containRaw, false, null);
 		}
 		return gainSQLFunction(method) + parseSQLExpression(KEY_HAVING, expression.substring(start), containRaw, false, null);
@@ -1935,8 +1952,70 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 */
 	protected String gainSQLFunctionExpression(String function, String[] args,
 			boolean distinct, String suffix) {
+		if (isKingBaseMySQL() && ("round".equalsIgnoreCase(function) || "sec_to_time".equalsIgnoreCase(function)) && !distinct
+				&& function.equalsIgnoreCase(gainSQLFunction(function))
+				&& args != null && args.length == 1 && "?".equals(args[0])
+				&& !getPreparedValueList().isEmpty()) {
+			Object value = getPreparedValueList().get(getPreparedValueList().size() - 1);
+			// Supply the numeric context required by these bound-string overloads.
+			// Keep columns, raw literals, invalid text and two-argument ROUND intact.
+			if (value instanceof String && value.toString().matches("[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+					&& Double.isFinite(Double.parseDouble(value.toString()))) {
+				args = new String[]{"round".equalsIgnoreCase(function) ? "CAST(? AS DOUBLE)" : "CAST(? AS pg_catalog.numeric)"};
+			}
+		}
+		if (isKingBaseMySQL() && args != null && isPrepared()
+				&& function.equalsIgnoreCase(gainSQLFunction(function))
+				&& Arrays.asList("concat_ws", "field", "find_in_set", "timestamp", "json_object", "json_set")
+						.contains(function.toLowerCase(Locale.ROOT))) {
+			// Polymorphic functions need TEXT, not the driver's untyped setObject
+			// or VARCHAR binding (FIELD/JSON_SET behave differently for VARCHAR).
+			args = args.clone();
+			List<Object> parameters = getPreparedValueList();
+			int offset = parameters.size() - KingbaseMySQLFunctions.parameterCount(StringUtil.get(args));
+			for (int i = 0; i < args.length; i++) {
+				int count = KingbaseMySQLFunctions.parameterCount(args[i]);
+				if ("?".equals(args[i]) && parameters.get(offset) instanceof String) args[i] = "CAST(? AS text)";
+				offset += count;
+			}
+		}
 		String original = gainSQLFunction(function) + "("
 				+ (distinct ? PREFIX_DISTINCT : "") + StringUtil.get(args) + ")" + suffix;
+		if ("length".equalsIgnoreCase(function) && isKingBaseMySQL() && !distinct
+				&& args != null && args.length == 1 && function.equalsIgnoreCase(gainSQLFunction(function))) {
+			// MySQL LENGTH counts bytes. Keep the original function name in the response label.
+			return "octet_length(" + args[0] + ")" + suffix;
+		}
+		if (isKingBaseMySQL() && "json_quote".equalsIgnoreCase(function)
+				&& function.equalsIgnoreCase(gainSQLFunction(function))) {
+			// JSON_QUOTE returns SQL text containing JSON, rather than a JSON column.
+			return "CAST(" + gainSQLFunction(function) + "(" + (distinct ? PREFIX_DISTINCT : "")
+					+ StringUtil.get(args) + ") AS text)" + suffix;
+		}
+		if (isKingBaseMySQL() && args != null && args.length == 1
+				&& function.equalsIgnoreCase(gainSQLFunction(function))) {
+			if ("time".equalsIgnoreCase(function) && !distinct && "?".equals(args[0])
+					&& !getPreparedValueList().isEmpty()
+					&& getPreparedValueList().get(getPreparedValueList().size() - 1) instanceof String) {
+				// This driver leaves TIME(?) untyped even with setObject(String).
+				String time = gainSQLFunction(function) + "(CAST(? AS varchar))";
+				String input = (String) getPreparedValueList().get(getPreparedValueList().size() - 1);
+				java.util.regex.Matcher fraction = MYSQL_TIME_FRACTION_PATTERN.matcher(input);
+				if (fraction.find()) {
+					// Keep declared fractional digits, including trailing zeros.
+					time = "CAST(" + time + " AS TIME(" + Math.min(6, fraction.group(1).length()) + "))";
+				}
+				return time + suffix;
+			}
+			if ("avg".equalsIgnoreCase(function) && "?".equals(args[0])
+					&& !getPreparedValueList().isEmpty()
+					&& getPreparedValueList().get(getPreparedValueList().size() - 1) instanceof String) {
+				// Resolve the bound-string overload, leaving calculation and precision
+				// to the configured Kingbase session rather than emulating MySQL.
+				return gainSQLFunction(function) + "(" + (distinct ? PREFIX_DISTINCT : "")
+						+ "CAST(? AS varchar))" + suffix;
+			}
+		}
 		if ("date_format".equalsIgnoreCase(function) && !distinct && args != null && args.length == 2
 				&& isKingBaseSQLServer()) {
 			// The format literal is translated before binding, so unsupported tokens
@@ -1954,7 +2033,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		}
 
 		java.util.regex.Matcher matcher = MYSQL_INTERVAL_LITERAL_PATTERN.matcher(args[1].trim());
-		if (matcher.matches() == false) {
+		if (matcher.matches() == false || useKingbaseMySQLQuotedIntervals() == false) {
 			return original;
 		}
 
@@ -1981,12 +2060,21 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	/**
+	 * The executor supplies its real connection, including pool initialization and
+	 * SET LOCAL settings. Standalone SQL generation retains the legacy grammar;
+	 * backends generating SQL without an executor may override this hook.
+	 */
+	protected boolean useKingbaseMySQLQuotedIntervals() {
+		return !Boolean.TRUE.equals(KingbaseMySQLCapabilities.intervalStyleOn(this));
+	}
+
+	/**
 	 * MySQL permits scalar HAVING expressions without GROUP BY and evaluates
 	 * them per selected row. Kingbase in MySQL compatibility mode applies
 	 * PostgreSQL grouping rules instead, so equivalent scalar predicates must be
-	 * evaluated in WHERE. Keep this limited to the known JSON length and MySQL
-	 * full-text relevance expressions; aggregate and all other HAVING expressions
-	 * are left untouched.
+	 * evaluated in WHERE. MySQL mode also accepts validated scalar predicates when
+	 * neither the projection nor HAVING aggregates rows. Projected aliases retain
+	 * their wrapper. Other modes keep the existing JSON/full-text conversions.
 	 */
 	protected boolean shouldMoveHavingToWhere() {
 		if ((isKingBaseMySQL() == false && isKingBaseSQLServer() == false)
@@ -1998,6 +2086,22 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		Map<String, Object> having = getHaving();
 		if (having == null || having.isEmpty()) {
 			return false;
+		}
+		if (isKingBaseMySQL() && (getRaw() == null || !getRaw().contains(KEY_HAVING))
+				&& (getRaw() == null || !getRaw().contains(KEY_COLUMN))) {
+			if (RequestMethod.isHeadMethod(getMethod(), true)) return false;
+			if (column != null) for (String item : column) {
+				if (KingbaseMySQLExpressions.hasAggregateOrWindow(item, SQL_AGGREGATE_FUNCTION_MAP.keySet())) return false;
+			}
+			for (Object value : having.values()) {
+				if (!(value instanceof String)) return false;
+				String expression = (String) value;
+				if (KingbaseMySQLExpressions.hasAggregateOrWindow(expression, SQL_AGGREGATE_FUNCTION_MAP.keySet())) return false;
+				if (columnAliasExpressionMap != null) for (String alias : columnAliasExpressionMap.keySet()) {
+					if (KingbaseMySQLExpressions.references(expression, alias)) return false;
+				}
+			}
+			return true;
 		}
 
 		for (Object value : having.values()) {
@@ -2061,12 +2165,48 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				}
 			}
 			if (output == null && projected.contains(key)) output = key;
+			if (output == null && kingbaseMySQLHavingOrderAliases != null) output = kingbaseMySQLHavingOrderAliases.get(key);
 			if (output == null) {
 				throw new UnsupportedOperationException("Kingbase alias HAVING requires ORDER BY columns in @column: " + key);
 			}
 			sql.add(getQuote() + output + getQuote() + (descending ? " DESC" : " ASC"));
 		}
 		return " ORDER BY " + String.join(", ", sql);
+	}
+
+	/** Extra sort columns stay inside the wrapper and never change its public projection. */
+	private String gainKingbaseMySQLHavingSelect(String select, String columns, String tablePath) throws Exception {
+		kingbaseMySQLHavingOrderAliases = new LinkedHashMap<>();
+		String innerColumns = columns;
+		List<String> labels = KingbaseMySQLExpressions.projectionLabels(columns, getQuote());
+		String[] orders = StringUtil.split(getOrder());
+		if (orders != null) for (String item : orders) {
+			if ("rand()".equals(item)) continue;
+			String key = item.endsWith("+") || item.endsWith("-") ? item.substring(0, item.length() - 1) : item;
+			if (!key.matches("[A-Za-z_][A-Za-z0-9_]*")) throw new IllegalArgumentException("Invalid alias HAVING order key: " + key);
+			boolean exposed = labels != null && labels.contains(key);
+			if (columnAliasExpressionMap != null) for (Map.Entry<String, String> alias : columnAliasExpressionMap.entrySet()) {
+				if (key.equals(alias.getKey()) || key.equals(alias.getValue())) exposed = true;
+			}
+			if (exposed) continue;
+			if (labels == null || isDistinct()
+					|| KingbaseMySQLExpressions.hasAggregateOrWindow(columns, SQL_AGGREGATE_FUNCTION_MAP.keySet())) {
+				throw new UnsupportedOperationException("Kingbase alias HAVING cannot expose this ORDER BY column: " + key);
+			}
+			String hidden = "_apijson_order_" + kingbaseMySQLHavingOrderAliases.size();
+			while (labels.contains(hidden) || kingbaseMySQLHavingOrderAliases.containsValue(hidden)) hidden += "_";
+			kingbaseMySQLHavingOrderAliases.put(key, hidden);
+			innerColumns += ", " + gainKey(key) + gainAs() + getQuote() + hidden + getQuote();
+		}
+		String outerColumns = "*";
+		if (!kingbaseMySQLHavingOrderAliases.isEmpty()) {
+			List<String> quoted = new ArrayList<>();
+			for (String label : labels) quoted.add(getQuote() + label.replace(getQuote(), getQuote() + getQuote()) + getQuote());
+			outerColumns = String.join(", ", quoted);
+		}
+		String inner = select + innerColumns + " FROM " + gainConditionString(tablePath, this, true);
+		return "SELECT " + outerColumns + " FROM (" + inner + ") " + gainAs() + getQuote() + "_apijson_having" + getQuote()
+				+ " WHERE " + gainHavingString(false) + gainKingbaseMySQLHavingOrder() + gainLimitString();
 	}
 
 	@Override
@@ -2377,7 +2517,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					//if (StringUtil.isEmpty(cfg.getAlias(), true)) {
 					//	cfg.setAlias(cfg.getTable());
 					//}
-					String c = ((AbstractSQLConfig<?, ?, ?>) cfg).gainOrderString(false);
+					String c = isKingBaseMySQL() && (join.isLeftOrRightJoin() || "*".equals(join.getJoinType()))
+							? ((AbstractSQLConfig<?, ?, ?>) cfg).gainKingbaseMySQLDerivedOrderString()
+							: ((AbstractSQLConfig<?, ?, ?>) cfg).gainOrderString(false);
 
 					if (StringUtil.isNotEmpty(c, true)) {
 						joinOrder += (first ? "" : ", ") + c;
@@ -2488,6 +2630,24 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		}
 
 		return (hasPrefix ? " ORDER BY " : "") + StringUtil.concat(StringUtil.get(keys), joinOrder, ", ");
+	}
+
+	private String gainKingbaseMySQLDerivedOrderString() {
+		String[] orders = StringUtil.split(getOrder());
+		if (orders == null) return "";
+		List<String> result = new ArrayList<>();
+		for (String item : orders) {
+			if ("rand()".equals(item)) { result.add(item); continue; }
+			String key = item.endsWith("+") || item.endsWith("-") ? item.substring(0, item.length() - 1) : item;
+			if (!key.matches("[A-Za-z_][A-Za-z0-9_]*")) throw new IllegalArgumentException("Invalid JOIN order key: " + key);
+			String output = key;
+			if (getColumn() != null) for (String projection : getColumn()) {
+				int alias = KingbaseMySQLExpressions.aliasIndex(projection);
+				if (alias > 0 && key.equals(projection.substring(0, alias))) output = projection.substring(alias + 1);
+			}
+			result.add(gainKey(output) + (item.endsWith("-") ? " DESC " : item.endsWith("+") ? " ASC " : ""));
+		}
+		return String.join(",", result);
 	}
 
 	/** Only a plain single-table projection can safely acquire a primary-key tie breaker.
@@ -2717,8 +2877,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		case GET:
 		case GETS:
 			columnAliasExpressionMap = isKingBaseMySQL() ? new LinkedHashMap<>() : null;
+			kingbaseMySQLProjectionLabels = null;
 			kingbaseMySQLLocalDateTimeAliases = null;
 			kingbaseMySQLSumAliases = null;
+			kingbaseMySQLHavingOrderAliases = null;
 			String joinColumn = "";
 			if (joinList != null) {
 				boolean first = true;
@@ -2951,7 +3113,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 				String nativeOrigin = gainSQLFunction(fun) + "(" + (distinct ? PREFIX_DISTINCT : "")
 						+ StringUtil.get(ckeys) + ")" + suffix;
-				if (isKingBaseMySQL() && isMySQLDateArithmeticFunction(fun)
+				if (isKingBaseMySQL()
 						&& allowAlias && KEY_COLUMN.equals(key) && StringUtil.isEmpty(alias, true)) {
 					nativeOrigin = gainKingbaseMySQLLiteralResponseLabel(nativeOrigin, functionParameterStart);
 				}
@@ -3026,7 +3188,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	/**
-	 * Kingbase exposes an unaliased aggregate/date function under the driver's shortened
+	 * Kingbase exposes unaliased functions under the driver's shortened
 	 * function name (for example {@code count}), while MySQL exposes the original
 	 * expression (for example {@code count(1)}). Preserve the API response key for
 	 * cross-database comparison without changing native database SQL. Projection
@@ -3034,13 +3196,12 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 */
 	protected String gainKingbaseMySQLAggregateResponseAlias(String key, String function,
 			String origin, String suffix, String alias, boolean allowAlias) {
-		if (isKingBaseMySQL() == false || !KEY_COLUMN.equals(key) || !allowAlias
-				|| StringUtil.isNotEmpty(suffix, true)) {
+		if (isKingBaseMySQL() == false || !KEY_COLUMN.equals(key) || !allowAlias) {
 			return alias;
 		}
-		boolean date = isMySQLDateArithmeticFunction(function);
-		String label = StringUtil.isNotEmpty(alias, true) ? alias
-				: (date || SQL_AGGREGATE_FUNCTION_MAP.containsKey(function) ? origin : null);
+		boolean date = isMySQLDateArithmeticFunction(function) || "timestamp".equalsIgnoreCase(function);
+		if (date && StringUtil.isNotEmpty(suffix, true)) return alias;
+		String label = StringUtil.isNotEmpty(alias, true) ? alias : origin;
 		if (date && StringUtil.isNotEmpty(label, true)) {
 			if (kingbaseMySQLLocalDateTimeAliases == null) {
 				kingbaseMySQLLocalDateTimeAliases = new HashSet<>();
@@ -3050,6 +3211,39 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		if ("sum".equalsIgnoreCase(function) && StringUtil.isNotEmpty(label, true)) {
 			if (kingbaseMySQLSumAliases == null) kingbaseMySQLSumAliases = new HashSet<>();
 			kingbaseMySQLSumAliases.add(label);
+		}
+		if (StringUtil.isEmpty(alias, true)) {
+			byte[] labelBytes = label.getBytes(StandardCharsets.UTF_8);
+			if (labelBytes.length > KINGBASE_MYSQL_IDENTIFIER_BYTES) {
+				// Keep the SQL identifier short and stable across prepared and literal generation.
+				String sqlAlias = KINGBASE_MYSQL_PROJECTION_PREFIX + UUID.nameUUIDFromBytes(labelBytes);
+				if (kingbaseMySQLProjectionLabels == null) kingbaseMySQLProjectionLabels = new HashMap<>();
+				kingbaseMySQLProjectionLabels.put(sqlAlias, label);
+				return sqlAlias;
+			}
+		}
+		return label;
+	}
+
+	static String restoreKingbaseMySQLProjectionLabel(SQLConfig<?, ?, ?> config, String label) {
+		if (label == null || !label.startsWith(KINGBASE_MYSQL_PROJECTION_PREFIX)
+				|| !(config instanceof AbstractSQLConfig) || !config.isKingBaseMySQL() || config.isExplain()) return label;
+		AbstractSQLConfig<?, ?, ?> sqlConfig = (AbstractSQLConfig<?, ?, ?>) config;
+		Map<String, String> labels = sqlConfig.kingbaseMySQLProjectionLabels;
+		if (labels != null && labels.containsKey(label)) return labels.get(label);
+		// A derived table or a JOIN wildcard can forward the generated SQL alias.
+		Subquery<?, ?, ?> source = config.getFrom();
+		if (source != null) {
+			String restored = restoreKingbaseMySQLProjectionLabel(source.gainConfig(), label);
+			if (!label.equals(restored)) return restored;
+		}
+		List<? extends Join<?, ?, ?>> joins = config.getJoinList();
+		if (joins != null) for (Join<?, ?, ?> join : joins) {
+			if (join == null || join.isAppJoin()) continue;
+			String restored = restoreKingbaseMySQLProjectionLabel(join.getOnConfig(), label);
+			if (!label.equals(restored)) return restored;
+			restored = restoreKingbaseMySQLProjectionLabel(join.getJoinConfig(), label);
+			if (!label.equals(restored)) return restored;
 		}
 		return label;
 	}
@@ -3062,8 +3256,19 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	private String gainKingbaseMySQLLiteralResponseLabel(String sql, int parameterStart) {
 		StringBuilder label = new StringBuilder();
 		int parameter = parameterStart;
+		char quote = 0;
 		for (int i = 0; i < sql.length(); i++) {
 			char ch = sql.charAt(i);
+			if (quote != 0) {
+				label.append(ch);
+				if (ch == '\\' && i + 1 < sql.length()) label.append(sql.charAt(++i));
+				else if (ch == quote) {
+					if (i + 1 < sql.length() && sql.charAt(i + 1) == quote) label.append(sql.charAt(++i));
+					else quote = 0;
+				}
+				continue;
+			}
+			if (ch == '\'' || ch == '"' || ch == '`') quote = ch;
 			if (ch != '?') {
 				label.append(ch);
 				continue;
@@ -4850,6 +5055,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	 * @return key REGEXP 'value'
 	 */
 	public String gainRegExpString(String key, String column, String value, boolean ignoreCase) {
+		if (isKingBaseMySQL()) value = KingbaseMySQLExpressions.regex(value);
 		if (isPSQL() || isKingBaseSQLServer()) {
 			return gainKey(column) + " ~" + (ignoreCase ? "* " : " ") + gainValue(key, column, value);
 		}
@@ -5192,7 +5398,12 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 					String candidate = c instanceof String
 							? "to_jsonb(CAST(" + gainValue(key, column, c) + " AS varchar))"
 							: gainValue(key, column, c == null ? "null" : c.toString()) + "::jsonb";
-					condition += target + " @> " + candidate;
+					// MySQL scalar containment descends through nested arrays, but never
+					// through object members. bool_or preserves SQL NULL under NOT/OR.
+					condition += "(WITH RECURSIVE _apijson_json(v) AS (SELECT " + target
+							+ " UNION ALL SELECT jsonb_array_elements(CASE WHEN jsonb_typeof(v)='array'"
+							+ " THEN v ELSE '[]'::jsonb END) FROM _apijson_json)"
+							+ " SELECT bool_or(v @> " + candidate + ") FROM _apijson_json)";
 				}
 				else if (isKingBaseSQLServer()) {
 					condition += (gainKey(column) + "::jsonb @> " + gainValue(key, column, newJSONArray(c)) + "::jsonb");
@@ -5687,6 +5898,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	public String gainUpdateSQL() throws Exception {
+		resetKingbaseMySQLWithAsState();
 		String tablePath = gainTablePath();
 		if (isClickHouse()){
 			return  "ALTER TABLE " + tablePath + " UPDATE" + gainSetString() + gainWhereString(true);
@@ -5699,6 +5911,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	public String gainDeleteSQL() throws Exception {
+		resetKingbaseMySQLWithAsState();
 		String tablePath = gainTablePath();
 		if(isClickHouse()){
 			return  "ALTER TABLE " +  tablePath + " DELETE" + gainWhereString(true);
@@ -5711,6 +5924,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	public String gainSelectSQL() throws Exception {
+		resetKingbaseMySQLWithAsState();
 		KingbaseSQLDialect kingbaseDialect = KingbaseSQLDialect.from(gainSQLDatabase());
 		String kingbaseExplain = isKingBaseCompatibilityMode() ? kingbaseDialect.getExplainPrefix() : null;
 		String explain = isExplain() ? (kingbaseExplain != null ? kingbaseExplain
@@ -5742,10 +5956,7 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		String select = "SELECT " + (getCache() == JSONMap.CACHE_RAM ? "SQL_NO_CACHE " : "");
 		String cSql;
 		if (shouldWrapKingbaseMySQLScalarHavingAlias()) {
-			String inner = select + column + " FROM " + gainConditionString(tablePath, this, true);
-			String wrapper = getQuote() + "_apijson_having" + getQuote();
-			cSql = "SELECT * FROM (" + inner + ") " + gainAs() + wrapper
-					+ " WHERE " + gainHavingString(false) + gainKingbaseMySQLHavingOrder() + gainLimitString();
+			cSql = gainKingbaseMySQLHavingSelect(select, column, tablePath);
 		}
 		else {
 			cSql = select + column + " FROM " + gainConditionString(tablePath, this) + gainLimitString();
@@ -5756,6 +5967,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		}
 
 		return explain + cSql;
+	}
+
+	/** Each generation owns its CTE definitions and parameters, including reused configs. */
+	private void resetKingbaseMySQLWithAsState() {
+		if (isKingBaseMySQL()) {
+			withAsExprSQLList = isWithAsEnable() ? new ArrayList<>() : null;
+			withAsExprPreparedValueList = new ArrayList<>();
+		}
 	}
 
 	private static <T, M extends Map<String, Object>, L extends List<Object>> String buildWithAsExprSql(@NotNull AbstractSQLConfig<T, M, L> config, String cSql) throws Exception {
@@ -5771,6 +5990,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				withAsExpreSql += (i <= 0 ? "" : ",") + list.get(i) + "\n";
 			}
 			cSql = withAsExpreSql + cSql;
+			if (config.isKingBaseMySQL() && config.isPrepared()) {
+				List<Object> values = new ArrayList<>();
+				List<Object> cteValues = config.getWithAsExprPreparedValueList();
+				if (cteValues != null) values.addAll(cteValues);
+				List<Object> mainValues = config.getPreparedValueList();
+				if (mainValues != null) values.addAll(mainValues);
+				config.setPreparedValueList(values);
+			}
 			config.clearWithAsExprListIfNeed();
 		}
 		return cSql;
@@ -5945,10 +6172,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 				case "<": // LEFT JOIN
 				case ">": // RIGHT JOIN
 					jc.setMain(true).setKeyPrefix(false);
-					// MySQL accepts CROSS JOIN ... ON as an INNER JOIN synonym, but
-					// Kingbase (PostgreSQL grammar) rejects an ON clause after CROSS JOIN.
-					// Keep a real Cartesian CROSS JOIN unchanged and only use the
-					// equivalent INNER JOIN when this compatibility mode has ON predicates.
+					// CROSS JOIN ... ON is an INNER JOIN synonym in MySQL. Keep the
+					// equivalent syntax accepted by both old and new Kingbase releases;
+					// a Cartesian CROSS JOIN without ON stays unchanged.
 					boolean kingbaseCrossJoinWithOn = "*".equals(type) && isKingBaseMySQL()
 							&& onList != null && onList.isEmpty() == false;
 					// Kingbase SQL Server rejects ORDER BY in an unpaged derived table. The
@@ -6121,8 +6347,13 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 						else if (isKingBaseSQLServer()) {
 							sql += (first ? ON : AND) + lk + (isNot ? NOT : "") + " ~" + (ignoreCase ? "* " : " ") + rk;
 						}
-						else if (isOracle() || isDameng() || isKingBase()
-								|| isKingBaseMySQL() || isKingBaseOracle()) {
+						else if (isKingBaseMySQL()) {
+							String predicate = "(CASE WHEN " + lk + " IS NULL OR " + rk
+									+ " IS NULL THEN NULL ELSE regexp_like(" + lk + ", " + rk
+									+ (ignoreCase ? ", 'i'" : ", 'c'") + ") END)";
+							sql += (first ? ON : AND) + (isNot ? "NOT " : "") + predicate;
+						}
+						else if (isOracle() || isDameng() || isKingBase() || isKingBaseOracle()) {
 							sql += (first ? ON : AND) + "regexp_like(" +  lk + ", " + rk + (ignoreCase ? ", 'i'" : ", 'c'") + ")";
 						}
 						else if (isPresto() || isTrino()) {
@@ -6178,7 +6409,13 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 							sql += (first ? ON : AND) + (isNot ? "( " : "") + gainCondition(isNot, arrKeyPath
 									+ " IS NOT NULL AND " + arrKeyPath + " @> " + itemKeyPath) + (isNot ? ") " : "");
 						}
-						else if (isKingBaseMySQL() || isKingBaseSQLServer()) {
+						else if (isKingBaseMySQL()) {
+							// A SQL string is a JSON string value, not JSON source text.
+							// to_jsonb also preserves numbers, booleans and typed JSON values.
+							sql += (first ? ON : AND) + (isNot ? "( " : "") + gainCondition(isNot, arrKeyPath
+									+ " IS NOT NULL AND " + arrKeyPath + "::jsonb @> to_jsonb(" + itemKeyPath + ")") + (isNot ? ") " : "");
+						}
+						else if (isKingBaseSQLServer()) {
 							sql += (first ? ON : AND) + (isNot ? "( " : "") + gainCondition(isNot, arrKeyPath
 									+ " IS NOT NULL AND " + arrKeyPath + "::jsonb @> " + itemKeyPath + "::jsonb") + (isNot ? ") " : "");
 						}

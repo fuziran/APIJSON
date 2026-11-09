@@ -155,11 +155,37 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		int c = statement.executeUpdate(sql);
 		return c;
 	}
+	private final ThreadLocal<PreparedStatement> kingbaseMySQLPreparedCall = new ThreadLocal<>();
+
 	@Override
 	public ResultSet execute(@NotNull Statement statement, String sql) throws Exception {
-		statement.execute(sql);
+		if (statement == kingbaseMySQLPreparedCall.get()) {
+			// Kingbase JDBC rejects Statement.execute(String) on a PreparedStatement.
+			((PreparedStatement) statement).execute();
+		}
+		else {
+			statement.execute(sql);
+		}
 		ResultSet rs = statement.getResultSet();
 		return rs;
+	}
+
+	/** Execute the SQL already prepared for a Kingbase MySQL procedure/unknown result. */
+	protected ResultSet executeUnknownType(@NotNull SQLConfig<T, M, L> config,
+			@NotNull Statement statement, String sql) throws Exception {
+		if (config.isKingBaseMySQL() && statement instanceof PreparedStatement) {
+			PreparedStatement previous = kingbaseMySQLPreparedCall.get();
+			kingbaseMySQLPreparedCall.set((PreparedStatement) statement);
+			try {
+				// Keep the original extension hook, SQL text and statement identity.
+				return execute(statement, sql);
+			}
+			finally {
+				if (previous == null) kingbaseMySQLPreparedCall.remove();
+				else kingbaseMySQLPreparedCall.set(previous);
+			}
+		}
+		return execute(statement, sql);
 	}
 
 	public static int MIN_OPTIMIZE_CAPACITY = 2^16 - 1;
@@ -171,6 +197,12 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	 */
 	@Override
 	public M execute(@NotNull SQLConfig<T, M, L> config, boolean unknownType) throws Exception {
+		try (KingbaseMySQLCapabilities.Scope scope = kingbaseMySQLExecutionScope()) {
+			return executeWithSession(config, unknownType);
+		}
+	}
+
+	private M executeWithSession(SQLConfig<T, M, L> config, boolean unknownType) throws Exception {
 		long executedSQLStartTime = System.currentTimeMillis();
 		final String sql = config.gainSQL(false);
 
@@ -213,7 +245,7 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 					executedSQLStartTime = System.currentTimeMillis();
 				}
 				Statement statement = getStatement(config);
-				rs = execute(statement, sql);
+				rs = executeUnknownType(config, statement, sql);
 				int updateCount = statement.getUpdateCount();
 				if (isExplain == false) {
 					executedSQLDuration += System.currentTimeMillis() - executedSQLStartTime;
@@ -760,6 +792,13 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 	 * @throws Exception
 	 */
 	protected void executeAppJoin(SQLConfig<T, M, L> config, List<M> resultList, Map<String, List<M>> childMap, Map<String, String> keyMap) throws Exception {
+		try (KingbaseMySQLCapabilities.Scope scope = kingbaseMySQLExecutionScope()) {
+			executeAppJoinWithSession(config, resultList, childMap, keyMap);
+		}
+	}
+
+	private void executeAppJoinWithSession(SQLConfig<T, M, L> config, List<M> resultList,
+			Map<String, List<M>> childMap, Map<String, String> keyMap) throws Exception {
 		List<Join<T, M, L>> joinList = config.getJoinList();
 		if (joinList != null) {
 
@@ -973,8 +1012,6 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 
 	}
 
-
-
 	/** Infer Kingbase SELECT boundaries without relying on first-row values or JDBC table names. */
 	protected Join[] resolveProjectionJoins(SQLConfig<T, M, L> config, ResultSetMetaData md) throws SQLException {
 		if (!(config.isKingBaseOracle() || config.isKingBaseMySQL() || config.isKingBaseSQLServer()) || config.isExplain()
@@ -1056,6 +1093,10 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 
 		String label = getKey(config, rs, rsmd, row, table, columnIndex, childMap, keyMap);
 		SQLConfig<T, M, L> valueConfig = config;
+		if (config.isKingBaseMySQL() && !config.isExplain() && join != null && join.getJoinConfig() != null) {
+			SQLConfig<T, M, L> onConfig = join.getOnConfig();
+			valueConfig = onConfig != null && onConfig.getColumn() != null ? onConfig : join.getJoinConfig();
+		}
 		// A projected Kingbase Oracle or SQL Server JOIN column belongs to the vice table.
 		// Its explicit @json declaration must not be lost or inherited from the
 		// main table. Preserve the existing mapping path for other databases.
@@ -1179,6 +1220,8 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		String key = rsmd.getColumnLabel(columnIndex);  // dotIndex < 0 ? label : label.substring(dotIndex + 1);
 		sqlResultDuration += System.currentTimeMillis() - startTime;
 
+		key = AbstractSQLConfig.restoreKingbaseMySQLProjectionLabel(config, key);
+
 		if (config.isHive()) {
 			String tableName = config.getTable();
 			String realTableName = AbstractSQLConfig.TABLE_KEY_MAP.get(tableName);
@@ -1236,9 +1279,33 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		}
 		// Read TIME directly as text: getObject() may already lose fractional seconds
 		// or reject a MySQL duration outside the java.sql.Time clock-time range.
-		boolean preciseTime = jdbcType == Types.TIME || jdbcType == Types.TIME_WITH_TIMEZONE;
+		boolean preciseTime = jdbcType == Types.TIME || jdbcType == Types.TIME_WITH_TIMEZONE
+				|| config.isKingBaseMySQL() && "interval".equals(normalizeJdbcTypeName(typeName));
 		if (kingbase) {
-			value = preciseTime ? rs.getString(columnIndex) : rs.getObject(columnIndex);
+			String temporalText = config.isKingBaseMySQL() && (jdbcType == Types.DATE || jdbcType == Types.TIMESTAMP)
+					? rs.getString(columnIndex) : null;
+			// java.sql.Date/Timestamp cannot represent MySQL's zero date. Reading it
+			// through getObject may silently normalize it into a different year.
+			boolean zeroDate = temporalText != null && temporalText.startsWith("0000-00-00");
+			try {
+				value = zeroDate ? temporalText : preciseTime ? rs.getString(columnIndex) : rs.getObject(columnIndex);
+			}
+			catch (SQLException readFailure) {
+				if (!config.isKingBaseMySQL() || (jdbcType != Types.DECIMAL && jdbcType != Types.NUMERIC)
+						|| !"22003".equals(readFailure.getSQLState())) {
+					throw readFailure;
+				}
+				// Some MySQL-mode drivers apply incorrect expression metadata in
+				// getObject's numeric conversion. The typed getter retains the actual
+				// server value; successful getObject mappings remain unchanged.
+				try {
+					value = rs.getBigDecimal(columnIndex);
+				}
+				catch (SQLException decimalFailure) {
+					readFailure.addSuppressed(decimalFailure);
+					throw readFailure;
+				}
+			}
 			sqlResultDuration += System.currentTimeMillis() - startTime;
 		}
 		return mapResultValue(config, value, jdbcType, typeName, label);
@@ -1635,8 +1702,20 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 		return getStatement(config, null);
 	}
 
+	@SuppressWarnings("unchecked")
+	private KingbaseMySQLCapabilities.Scope kingbaseMySQLExecutionScope() {
+		return KingbaseMySQLCapabilities.enter(this,
+				config -> getConnection((SQLConfig<T, M, L>) config));
+	}
+
 	@Override
 	public PreparedStatement getStatement(@NotNull SQLConfig<T, M, L> config, String sql) throws Exception {
+		try (KingbaseMySQLCapabilities.Scope scope = kingbaseMySQLExecutionScope()) {
+			return getStatementWithSession(config, sql);
+		}
+	}
+
+	private PreparedStatement getStatementWithSession(SQLConfig<T, M, L> config, String sql) throws Exception {
 		boolean kingbase = config.isKingBaseCompatibilityMode();
 		if (!kingbase && StringUtil.isEmpty(sql)) {
 			sql = config.gainSQL(config.isPrepared());
@@ -2229,6 +2308,12 @@ public abstract class AbstractSQLExecutor<T, M extends Map<String, Object>, L ex
 
 	@Override
 	public ResultSet executeQuery(@NotNull SQLConfig<T, M, L> config, String sql) throws Exception {
+		try (KingbaseMySQLCapabilities.Scope scope = kingbaseMySQLExecutionScope()) {
+			return executeQueryWithSession(config, sql);
+		}
+	}
+
+	private ResultSet executeQueryWithSession(SQLConfig<T, M, L> config, String sql) throws Exception {
 		if (config.isPrepared() == false || config.isTDengine() // TDengine JDBC 不支持 PreparedStatement
             || (config.isExplain() && (config.isPresto() || config.isTrino()))) { // Presto JDBC 0.277 在 EXPLAIN 模式下预编译值不会替代 ? 占位导致报错
 
