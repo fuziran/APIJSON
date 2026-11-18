@@ -1,5 +1,6 @@
 package apijson.orm;
 
+import apijson.RequestMethod;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.*;
@@ -90,6 +91,31 @@ public class KingbaseMySQLUpgradeRegressionTest {
 			c.putWhere(i==0?"id{}":"id!{}",query,false);
 		}
 		return c;
+	}
+
+	@Test
+	public void groupedHeadCountsFilteredGroupsWithoutLosingCteBindings() throws Exception {
+		boolean previous = AbstractSQLConfig.ENABLE_WITH_AS;
+		try {
+			AbstractSQLConfig.ENABLE_WITH_AS = true;
+			AbstractSQLConfig<Long, Map<String, Object>, List<Object>> config = cte(false);
+			config.setMethod(RequestMethod.HEAD);
+			config.setGroup("id");
+			config.setHaving(Collections.<String, Object>singletonMap("minimum", "count(id)>1"));
+			config.setCount(2);
+			config.setPage(1);
+			String sql = config.gainSQL(true);
+			assertTrue(sql, sql.startsWith("WITH "));
+			assertTrue(sql, sql.contains("SELECT count(*) AS `count` FROM (SELECT"));
+			assertTrue(sql, sql.contains("GROUP BY `id` HAVING (count(`id`)>1)"));
+			assertFalse(sql, sql.contains("LIMIT"));
+			assertEquals(5, KingbaseMySQLFunctions.parameterCount(sql));
+			assertEquals(Arrays.asList(11, 22, 11, 22, 22), config.getPreparedValueList());
+			assertEquals(sql, config.gainSQL(true));
+			assertEquals(Arrays.asList(11, 22, 11, 22, 22), config.getPreparedValueList());
+		} finally {
+			AbstractSQLConfig.ENABLE_WITH_AS = previous;
+		}
 	}
 
 	@Test public void cteBindingsFollowSqlOrderAndSurviveRepeatedGeneration() throws Exception {

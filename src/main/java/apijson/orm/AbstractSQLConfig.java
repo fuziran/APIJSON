@@ -185,6 +185,8 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		DATABASE_LIST.add(DATABASE_MONGODB);
 		DATABASE_LIST.add(DATABASE_CASSANDRA);
 		DATABASE_LIST.add(DATABASE_KAFKA);
+		DATABASE_LIST.add(DATABASE_SQLITE);
+		DATABASE_LIST.add(DATABASE_TURSO);
 		DATABASE_LIST.add(DATABASE_MQ);
 		DATABASE_LIST.add(DATABASE_DUCKDB);
 		DATABASE_LIST.add(DATABASE_SURREALDB);
@@ -1457,6 +1459,14 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	}
 
 	@Override
+	public boolean isTurso() {
+		return isTurso(gainSQLDatabase());
+	}
+	public static boolean isTurso(String db) {
+		return DATABASE_TURSO.equals(db);
+	}
+
+	@Override
 	public boolean isDuckDB() {
 		return isDuckDB(gainSQLDatabase());
 	}
@@ -2536,7 +2546,9 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 		//			return (hasPrefix ? " ORDER BY " : "") + StringUtil.concat(order, joinOrder, ", ");
 		//		}
 
-		if (getCount() > 0 && (isSQLServer() || isKingBaseSQLServer() || isDb2())) {
+		// 聚合函数不带 GROUP BY 时只有一行，不能补 ORDER BY，否则 SQL Server/DB2 报列未包含在聚合函数内
+		if (getCount() > 0 && (isSQLServer() || isKingBaseSQLServer() || isDb2())
+				&& isAggregateWithoutGroup() == false) {
 			// Oracle, SQL Server, DB2 的 OFFSET 必须加 ORDER BY.去掉Oracle，Oracle里面没有offset关键字
 
 			//			String[] ss = StringUtil.split(order);
@@ -3741,6 +3753,40 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 	public static int getOffset(int page, int count) {
 		return page*count;
 	}
+	/**SELECT 是否只有一个不带 GROUP BY 的聚合函数，例如 @column:"max(date):date"
+	 * 这种 SQL 永远只返回一行，不能再用 ORDER BY id + OFFSET/FETCH 分页，
+	 * 否则 SQL Server/DB2 报 order by 子句列 id 无效，该列没有包含在聚合函数或 group by 子句中
+	 * @return
+	 */
+	public boolean isAggregateWithoutGroup() {
+		if (StringUtil.isNotEmpty(getGroup(), true)) {
+			return false;
+		}
+
+		List<String> column = getColumn();
+		if (column == null || column.size() != 1) {
+			return false;
+		}
+
+		String expression = column.get(0);
+		if (StringUtil.isEmpty(expression, true)) {
+			return false;
+		}
+
+		int index = expression.lastIndexOf(":");
+		if (index > 0) {
+			expression = expression.substring(0, index); // 去掉 :alias
+		}
+
+		int start = expression.indexOf("(");
+		if (start <= 0) {
+			return false;
+		}
+
+		String fun = expression.substring(0, start).trim().toLowerCase();
+		return SQL_AGGREGATE_FUNCTION_MAP.containsKey(fun);
+	}
+
 	/**获取限制数量
 	 * @return
 	 */
@@ -3750,6 +3796,10 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 		boolean isMilvus = isMilvus();
 		if ((count <= 0 && ! (isMilvus && isMain())) || RequestMethod.isHeadMethod(getMethod(), true)) { // TODO HEAD 真的不需要 LIMIT ？
+			return "";
+		}
+
+		if (isAggregateWithoutGroup()) { // 聚合函数不带 GROUP BY 永远只返回一行，分页会引入非法的 ORDER BY
 			return "";
 		}
 
@@ -5955,7 +6005,15 @@ public abstract class AbstractSQLConfig<T, M extends Map<String, Object>, L exte
 
 		String select = "SELECT " + (getCache() == JSONMap.CACHE_RAM ? "SQL_NO_CACHE " : "");
 		String cSql;
-		if (shouldWrapKingbaseMySQLScalarHavingAlias()) {
+		// 分组后的 HEAD 要统计组数，不是组内数量，和 Oracle 分支一样用 count(*) 包一层。
+		// 原 SQL 为 count(*) ... GROUP BY ... ，返回多行组内数量，和 total 语义不符。
+		// MySQL 等要求 FROM 的子查询必须有别名。
+		if (StringUtil.isNotEmpty(getGroup(), true) && RequestMethod.isHeadMethod(getMethod(), true)) {
+			String groupedSelect = select + column + " FROM " + gainConditionString(tablePath, this);
+			cSql = "SELECT count(*)" + gainAs() + getQuote() + JSONResponse.KEY_COUNT + getQuote()
+					+ " FROM (" + groupedSelect + ")" + gainAs() + gainSQLAliasWithQuote();
+		}
+		else if (shouldWrapKingbaseMySQLScalarHavingAlias()) {
 			cSql = gainKingbaseMySQLHavingSelect(select, column, tablePath);
 		}
 		else {

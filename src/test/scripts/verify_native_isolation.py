@@ -23,7 +23,7 @@ REVISIONS = {
     "v820": ("d86a6405", "APIJSONORM/"),
     "pre": ("2ea3700e", "APIJSONORM/"),
     "merge": ("8a8d33ee", "APIJSONORM/"),
-    "main": ("59c3a150", ""),
+    "main": ("cdfb8d03", ""),
 }
 
 
@@ -56,7 +56,7 @@ def build_reference():
         if not ours.exists():
             continue  # KingbaseSQLDialect was introduced by the adaptation.
         result = run(["git", "merge-file", "-p", str(ours), str(base), str(source)])
-        if result.returncode not in (0, 1, 2):
+        if result.returncode not in (0, 1, 2, 3):
             raise RuntimeError(result.stderr.decode(errors="replace"))
         content = result.stdout.decode("utf-8").replace("\r\n", "\n")
         if result.returncode:
@@ -66,8 +66,10 @@ def build_reference():
             def resolve(match):
                 nonlocal index
                 index += 1
-                if source.name == "SQLConfig.java" or index == 1:
-                    return match[1]  # Original constants and isKingBase predicate.
+                if source.name in ("SQLConfig.java", "AbstractSQLExecutor.java") or index == 1:
+                    return match[1]  # Keep the original declarations, predicate and JDBC mapping.
+                if "&& isAggregateWithoutGroup() == false" in match[2]:
+                    return match[2].replace(" || isKingBaseSQLServer()", "")
                 assert "return config.gainUpdateSQL();" in match[2]
                 return match[2]  # Retain upstream CRUD extraction and UPSERT.
 
@@ -91,7 +93,7 @@ def build_reference():
         dest = OUT / "reference" / relative
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
-    assert conflicts == {"AbstractSQLConfig.java": 2, "SQLConfig.java": 1}, conflicts
+    assert conflicts == {"AbstractSQLConfig.java": 3, "AbstractSQLExecutor.java": 1, "SQLConfig.java": 1}, conflicts
 
 
 def java_run(java, classpath, main, *args):
@@ -142,19 +144,24 @@ def main():
         print(name + ": reference compiled; contract tests passed", flush=True)
     classpath = os.pathsep.join(map(str, [ROOT / "target/test-classes", ROOT / "target/classes"] + jars))
     java_run(java, classpath, "apijson.orm.NativeDatabaseBaselineTest", OUT / "current.tsv")
-    reference = (OUT / "reference.tsv").read_bytes()
-    if options.refresh_baseline:
-        BASELINE.write_bytes(reference)
-    assert BASELINE.read_bytes() == reference, "Saved baseline differs from independently rebuilt reference"
-    assert (OUT / "current.tsv").read_bytes() == reference, "Current native SQL/parameters/errors differ from reference"
+    reference = OUT / "reference.tsv"
+    new = reference.read_text(encoding="utf-8").splitlines()
+    assert (OUT / "current.tsv").read_text(encoding="utf-8").splitlines() == new, (
+        "Current native SQL/parameters/errors differ from reference")
     old = (OUT / "v820.tsv").read_text(encoding="utf-8").splitlines()
-    new = reference.decode("utf-8").splitlines()
-    assert len(old) == len(new)
-    differences = [{"v820": a, "upstream": b} for a, b in zip(old, new) if a != b]
-    assert all(row["v820"].split("|")[2] == "having-column" for row in differences)
+    shared = [row for row in new if not row.startswith("TURSO|")]
+    assert len(old) == len(shared)
+    differences = [{"v820": a, "upstream": b} for a, b in zip(old, shared) if a != b]
+    assert all(row["v820"].split("|", 3)[:3] == row["upstream"].split("|", 3)[:3]
+               and row["v820"].split("|", 3)[2] == "having-column" for row in differences)
+    if options.refresh_baseline:
+        BASELINE.write_bytes(reference.read_bytes())
+    assert BASELINE.read_text(encoding="utf-8").splitlines() == new, (
+        "Saved baseline differs from independently rebuilt reference")
     summary = {"revisions": REVISIONS, "native_snapshot_cases": len(new),
                "current_vs_isolated_upstream_differences": 0,
                "expected_v820_upstream_differences": len(differences),
+               "upstream_turso_cases": len(new) - len(shared),
                "upstream_having_commit": "bccbf475", "differences": differences}
     (OUT / "comparison.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Native cases: {len(new)}; current/reference differences: 0; expected upstream HAVING differences: {len(differences)}")

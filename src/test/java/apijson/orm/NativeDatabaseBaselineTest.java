@@ -103,7 +103,7 @@ public class NativeDatabaseBaselineTest {
 		try {
 			List<String> rows = new ArrayList<>();
 			List<String> databases = new ArrayList<>(AbstractSQLConfig.DATABASE_LIST);
-			databases.removeIf(db -> db.startsWith("KINGBASE_"));
+			databases.removeIf(db -> db.startsWith("KINGBASE_") || "SQLITE".equals(db));
 			databases.add("SQLITE");
 			databases.add("CUSTOM_DATABASE");
 			for (String db : databases) {
